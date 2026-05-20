@@ -1,0 +1,78 @@
+spring:
+
+  # =======================
+  # DATABASE DEV
+  # =======================
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/linkup}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: ${DB_DRIVER:org.postgresql.Driver}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  # =======================
+  # REDIS DEV
+  # =======================
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: ${REDIS_TIMEOUT:2000}ms
+
+  # =======================
+  # SECURITY DEV (KEYCLOAK)
+  # =======================
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8081/realms/linkup}
+
+  # =======================
+  # MAIL DEV (MAILHOG)
+  # =======================
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+
+# =======================
+# LOGGING DEV
+# =======================
+logging:
+  level:
+    root: ${LOG_LEVEL_ROOT:INFO}
+    org.springframework.security: DEBUG
+    com.siide.linkup: ${LOG_LEVEL_APP:DEBUG}
+
+# =======================
+# ACTUATOR DEV
+# =======================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+# =======================
+# SWAGGER DEV
+# =======================
+springdoc:
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:true}
+    path: /api-docs
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:true}
+    path: /swagger-ui.html
+    operationsSorter: method

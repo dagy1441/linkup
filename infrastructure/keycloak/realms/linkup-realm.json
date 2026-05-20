@@ -1,0 +1,104 @@
+{
+  "realm": "linkup",
+  "displayName": "LinkUp",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "rememberMe": true,
+  "verifyEmail": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "accessTokenLifespan": 1800,
+  "refreshTokenMaxReuse": 0,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      {
+        "name": "user",
+        "description": "Standard authenticated user. Can book activities."
+      },
+      {
+        "name": "organizer",
+        "description": "Can create, update and cancel activities."
+      },
+      {
+        "name": "admin",
+        "description": "Platform administrator (reserved)."
+      }
+    ]
+  },
+  "defaultRole": {
+    "name": "user",
+    "description": "Standard authenticated user. Can book activities."
+  },
+  "clients": [
+    {
+      "clientId": "linkup-web",
+      "name": "LinkUp Web / Mobile clients",
+      "description": "Public client used by the SPA / mobile app to obtain JWTs.",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:*",
+        "http://localhost:*/*",
+        "http://127.0.0.1:*",
+        "http://127.0.0.1:*/*"
+      ],
+      "webOrigins": ["*"],
+      "protocol": "openid-connect",
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "access.token.lifespan": "1800"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "email"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "alice@linkup.io",
+      "email": "alice@linkup.io",
+      "firstName": "Alice",
+      "lastName": "Organizer",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "alice123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["organizer", "user"]
+    },
+    {
+      "username": "bob@linkup.io",
+      "email": "bob@linkup.io",
+      "firstName": "Bob",
+      "lastName": "User",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "bob123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["user"]
+    }
+  ]
+}

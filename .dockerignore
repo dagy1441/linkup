@@ -1,0 +1,60 @@
+# =============================================================================
+# Docker build context exclusions
+# Keep the image lean and avoid leaking secrets / IDE noise into builds.
+# =============================================================================
+
+# Build output
+target/
+build/
+out/
+*.jar
+!**/maven-wrapper.jar
+
+# Maven local cache (rebuilt by the image)
+.mvn/wrapper/maven-wrapper.jar
+
+# Git & GitHub
+.git/
+.github/
+.gitignore
+.gitattributes
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+!.env.exampl
+
+# Logs / scratch
+*.log
+logs/
+*.tmp
+*.swp
+
+# Docs (already shipped via API docs; no need in the image)
+README.md
+HELP.md
+CLAUDE.md
+memory.md
+backlog.md
+*.md
+
+# Tests / Docker / k8s artefacts not needed in the JAR runtime image
+docker-compose*.yaml
+docker-compose*.yml
+Dockerfile*
+infrastructure/
+
+# Claude Code session state
+.claude/

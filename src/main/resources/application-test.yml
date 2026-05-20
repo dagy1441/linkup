@@ -1,0 +1,38 @@
+spring:
+
+  # =======================
+  # TEST DATABASE (TESTCONTAINERS OVERRIDE)
+  # =======================
+  datasource:
+    url: jdbc:tc:postgresql:17:///linkup
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+
+  # =======================
+  # REDIS TEST (IN-MEMORY OPTION)
+  # =======================
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  # =======================
+  # DISABLE SECURITY FOR TEST (OPTION)
+  # =======================
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost
+
+# =======================
+# LOGGING TEST
+# =======================
+logging:
+  level:
+    root: WARN
+    com.siide.linkup: DEBUG

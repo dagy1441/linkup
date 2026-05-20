@@ -1,0 +1,207 @@
+# =============================================================================
+# LinkUp — local development & e2e stack
+# =============================================================================
+# Profiles:
+#   (default)    postgres + redis + keycloak           → backend running on host
+#   tools        + pgadmin + mailhog                   → dev convenience UIs
+#   app          + the linkup backend (built locally)  → full containerised stack
+#
+# Usage examples:
+#   docker compose up -d                       # infra only
+#   docker compose --profile tools up -d       # infra + pgadmin + mailhog
+#   docker compose --profile app up -d --build # full stack incl. backend
+# =============================================================================
+
+services:
+
+  # =========================
+  # POSTGRESQL DATABASE
+  # =========================
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-linkup}
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      TZ: Africa/Abidjan
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_NAME:-linkup}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks: [linkup-network]
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=200"
+      - "-c"
+      - "log_min_messages=warning"
+
+  # =========================
+  # REDIS CACHE
+  # =========================
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks: [linkup-network]
+
+  # =========================
+  # KEYCLOAK IAM
+  # =========================
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3
+    restart: unless-stopped
+    # --import-realm bootstraps /opt/keycloak/data/import/*.json on first start.
+    # Idempotent: existing realms are skipped on subsequent starts.
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-linkup}
+      KC_DB_USERNAME: ${DB_USERNAME:-postgres}
+      KC_DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      TZ: Africa/Abidjan
+    ports:
+      - "8081:8080"   # auth endpoint
+      - "9001:9000"   # management (health/metrics)
+    volumes:
+      - ./infrastructure/keycloak/realms:/opt/keycloak/data/import:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Keycloak 26 images are distroless-ish — no curl. TCP probe via /dev/tcp is
+    # the portable way; start_period is generous because cold-start does schema migration.
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && echo -e 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '200' <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+    networks: [linkup-network]
+
+  # =========================
+  # PGADMIN — dev UI (profile: tools)
+  # =========================
+  pgadmin:
+    image: dpage/pgadmin4:9
+    profiles: [tools]
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@linkup.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks: [linkup-network]
+
+  # =========================
+  # MAILHOG — SMTP mock (profile: tools)
+  # =========================
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    profiles: [tools]
+    restart: unless-stopped
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # UI
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    networks: [linkup-network]
+
+  # =========================
+  # LINKUP BACKEND — built from local Dockerfile (profile: app)
+  # =========================
+  app:
+    profiles: [app]
+    image: linkup-backend:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      SERVER_PORT: "8080"
+      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-linkup}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_DRIVER: org.postgresql.Driver
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/${KEYCLOAK_REALM:-linkup}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-linkup}
+      MAIL_HOST: ${MAIL_HOST:-mailhog}
+      MAIL_PORT: ${MAIL_PORT:-1025}
+      BOOKING_MAX_ITEMS_PER_USER: ${BOOKING_MAX_ITEMS_PER_USER:-5}
+      ACTIVITY_DEFAULT_PAGE_SIZE: ${ACTIVITY_DEFAULT_PAGE_SIZE:-20}
+      JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
+      TZ: Africa/Abidjan
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+    networks: [linkup-network]
+
+# =========================
+# VOLUMES
+# =========================
+volumes:
+  postgres_data:
+  redis_data:
+  pgadmin_data:
+
+# =========================
+# NETWORK
+# =========================
+networks:
+  linkup-network:
+    driver: bridge
