@@ -11,7 +11,7 @@ CREATE TABLE idempotency_keys (
     user_id           UUID         NOT NULL,
     endpoint          VARCHAR(255) NOT NULL,
     request_hash      VARCHAR(64)  NOT NULL,
-    response_status   SMALLINT,
+    response_status   INTEGER,
     response_body     TEXT,
     response_type     VARCHAR(255),
     created_at        TIMESTAMPTZ  NOT NULL,
