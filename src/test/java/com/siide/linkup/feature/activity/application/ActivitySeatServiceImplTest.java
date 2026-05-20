@@ -10,7 +10,9 @@ import java.time.ZoneOffset;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -28,26 +30,38 @@ class ActivitySeatServiceImplTest {
     }
 
     @Test
-    void try_reserve_returns_true_when_one_row_updated() {
+    void try_reserve_returns_true_when_row_updated() {
         UUID id = UUID.randomUUID();
-        when(repository.reserveSeatAtomic(eq(id), any())).thenReturn(1);
+        when(repository.reserveSeatsAtomic(eq(id), eq(3), any())).thenReturn(1);
 
-        assertThat(service.tryReserveSeat(id)).isTrue();
+        assertThat(service.tryReserveSeats(id, 3)).isTrue();
     }
 
     @Test
     void try_reserve_returns_false_when_no_row_updated() {
         UUID id = UUID.randomUUID();
-        when(repository.reserveSeatAtomic(eq(id), any())).thenReturn(0);
+        when(repository.reserveSeatsAtomic(eq(id), anyInt(), any())).thenReturn(0);
 
-        assertThat(service.tryReserveSeat(id)).isFalse();
+        assertThat(service.tryReserveSeats(id, 2)).isFalse();
     }
 
     @Test
     void release_does_not_throw_when_no_row_affected() {
         UUID id = UUID.randomUUID();
-        when(repository.releaseSeatAtomic(id)).thenReturn(0);
+        when(repository.releaseSeatsAtomic(id, 2)).thenReturn(0);
 
-        service.releaseSeat(id); // no exception
+        service.releaseSeats(id, 2); // no exception
+    }
+
+    @Test
+    void try_reserve_rejects_non_positive_qty() {
+        assertThatThrownBy(() -> service.tryReserveSeats(UUID.randomUUID(), 0))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void release_rejects_non_positive_qty() {
+        assertThatThrownBy(() -> service.releaseSeats(UUID.randomUUID(), -1))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }

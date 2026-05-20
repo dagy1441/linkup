@@ -55,8 +55,8 @@ class ActivityTest {
     @Test
     void reserve_seat_increments_booked_count() {
         Activity a = newActivity(2);
-        a.reserveSeat(now);
-        a.reserveSeat(now);
+        a.reserveSeats(1, now);
+        a.reserveSeats(1, now);
 
         assertThat(a.getBookedCount()).isEqualTo(2);
         assertThat(a.getRemainingSeats()).isZero();
@@ -65,9 +65,9 @@ class ActivityTest {
     @Test
     void reserve_seat_throws_when_full() {
         Activity a = newActivity(1);
-        a.reserveSeat(now);
+        a.reserveSeats(1, now);
 
-        assertThatThrownBy(() -> a.reserveSeat(now))
+        assertThatThrownBy(() -> a.reserveSeats(1, now))
                 .isInstanceOf(ActivityFullException.class);
     }
 
@@ -76,15 +76,31 @@ class ActivityTest {
         Activity a = newActivity(1);
         a.cancel();
 
-        assertThatThrownBy(() -> a.reserveSeat(now))
+        assertThatThrownBy(() -> a.reserveSeats(1, now))
                 .isInstanceOf(ActivityInvalidStateException.class);
     }
 
     @Test
-    void release_seat_never_goes_below_zero() {
+    void release_seats_never_goes_below_zero() {
         Activity a = newActivity(2);
-        a.releaseSeat();
+        a.releaseSeats(5);
         assertThat(a.getBookedCount()).isZero();
+    }
+
+    @Test
+    void reserve_multiple_seats_at_once() {
+        Activity a = newActivity(5);
+        a.reserveSeats(3, now);
+        assertThat(a.getBookedCount()).isEqualTo(3);
+        assertThat(a.getRemainingSeats()).isEqualTo(2);
+    }
+
+    @Test
+    void reserve_seats_throws_when_request_exceeds_remaining() {
+        Activity a = newActivity(5);
+        a.reserveSeats(4, now);
+        assertThatThrownBy(() -> a.reserveSeats(2, now))
+                .isInstanceOf(ActivityFullException.class);
     }
 
     @Test
@@ -97,8 +113,8 @@ class ActivityTest {
     @Test
     void update_rejected_when_capacity_below_booked_count() {
         Activity a = newActivity(5);
-        a.reserveSeat(now);
-        a.reserveSeat(now);
+        a.reserveSeats(1, now);
+        a.reserveSeats(1, now);
 
         assertThatThrownBy(() -> a.update("New", null, Location.ofCity("Abidjan"),
                 inOneHour, 1, now))
