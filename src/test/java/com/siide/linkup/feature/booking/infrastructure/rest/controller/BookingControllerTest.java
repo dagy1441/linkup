@@ -2,11 +2,13 @@ package com.siide.linkup.feature.booking.infrastructure.rest.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.siide.linkup.core.idempotency.IdempotencyService;
 import com.siide.linkup.feature.auth.api.CurrentUserAccessor;
 import com.siide.linkup.feature.booking.application.BookingCommandService;
 import com.siide.linkup.feature.booking.application.BookingQueryService;
 import com.siide.linkup.feature.booking.domain.model.Booking;
 import com.siide.linkup.feature.booking.infrastructure.rest.dto.BookingRequest;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration;
@@ -25,6 +27,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -56,6 +59,14 @@ class BookingControllerTest {
     @MockitoBean BookingCommandService commandService;
     @MockitoBean BookingQueryService queryService;
     @MockitoBean CurrentUserAccessor currentUserAccessor;
+    @MockitoBean IdempotencyService idempotencyService;
+
+    @BeforeEach
+    void wireIdempotencyPassthrough() {
+        // Default: pass through to the supplier (no caching). Individual tests can override.
+        when(idempotencyService.execute(any(), any(), any(), any(), any(), any()))
+                .thenAnswer(inv -> ((Supplier<?>) inv.getArgument(5)).get());
+    }
 
     @Test
     void create_returns_201_with_payload() throws Exception {
@@ -69,6 +80,7 @@ class BookingControllerTest {
         BookingRequest body = new BookingRequest(activityId, 2);
 
         mockMvc.perform(post("/api/v1/bookings")
+                        .header("Idempotency-Key", "key-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(MAPPER.writeValueAsString(body)))
                 .andExpect(status().isCreated())
@@ -78,10 +90,22 @@ class BookingControllerTest {
     }
 
     @Test
+    void create_returns_400_when_idempotency_key_header_missing() throws Exception {
+        BookingRequest body = new BookingRequest(UUID.randomUUID(), 1);
+
+        mockMvc.perform(post("/api/v1/bookings")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(MAPPER.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MISSING_REQUEST_HEADER"));
+    }
+
+    @Test
     void create_returns_400_on_validation_failure() throws Exception {
         BookingRequest invalid = new BookingRequest(null, 0);
 
         mockMvc.perform(post("/api/v1/bookings")
+                        .header("Idempotency-Key", "key-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(MAPPER.writeValueAsString(invalid)))
                 .andExpect(status().isBadRequest())
@@ -126,7 +150,8 @@ class BookingControllerTest {
         when(currentUserAccessor.requireCurrentUserId()).thenReturn(userId);
         when(commandService.cancel(b.getId(), userId)).thenReturn(b);
 
-        mockMvc.perform(delete("/api/v1/bookings/{id}", b.getId()))
+        mockMvc.perform(delete("/api/v1/bookings/{id}", b.getId())
+                        .header("Idempotency-Key", "del-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("CANCELLED"));
     }

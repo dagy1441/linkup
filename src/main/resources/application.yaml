@@ -46,6 +46,12 @@ linkup:
     default-page-size: 20
     max-page-size: 100
 
+  idempotency:
+    header-name: Idempotency-Key
+    ttl: PT24H
+    max-key-length: 128
+    cleanup-cron: "0 0 3 * * *"
+
   activity:
     default-page-size: 20
     max-page-size: 100
