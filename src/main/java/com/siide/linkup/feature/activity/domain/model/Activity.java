@@ -116,24 +116,28 @@ public class Activity extends Auditable {
                 && bookedCount < capacity;
     }
 
-    /** Domain operation: book one seat. Used by {@code ActivitySeatService}. */
-    public void reserveSeat(Instant now) {
+    /** Domain operation: book {@code qty} seats. Used by {@code ActivitySeatService}. */
+    public void reserveSeats(int qty, Instant now) {
+        if (qty <= 0) {
+            throw new IllegalArgumentException("qty must be > 0");
+        }
         if (status != ActivityStatus.PUBLISHED) {
             throw new ActivityInvalidStateException("Cannot book a non-published activity");
         }
         if (!startsAt.isAfter(now)) {
             throw new ActivityInvalidStateException("Cannot book an activity that has already started");
         }
-        if (bookedCount >= capacity) {
+        if (bookedCount + qty > capacity) {
             throw new ActivityFullException(id);
         }
-        this.bookedCount++;
+        this.bookedCount += qty;
     }
 
-    public void releaseSeat() {
-        if (bookedCount > 0) {
-            this.bookedCount--;
+    public void releaseSeats(int qty) {
+        if (qty <= 0) {
+            throw new IllegalArgumentException("qty must be > 0");
         }
+        this.bookedCount = Math.max(0, this.bookedCount - qty);
     }
 
     private void setTitle(String title) {

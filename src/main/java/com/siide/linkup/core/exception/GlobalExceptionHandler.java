@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -74,6 +75,12 @@ public class GlobalExceptionHandler {
                 HttpStatus.BAD_REQUEST.value(), "VALIDATION_FAILED", "Request payload is invalid.",
                 req.getRequestURI(), fieldErrors);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ApiError> handleMissingHeader(MissingRequestHeaderException ex, HttpServletRequest req) {
+        return build(HttpStatus.BAD_REQUEST, "MISSING_REQUEST_HEADER",
+                "Required header '" + ex.getHeaderName() + "' is missing.", req);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

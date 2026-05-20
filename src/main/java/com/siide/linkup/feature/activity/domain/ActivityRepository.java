@@ -23,11 +23,16 @@ public interface ActivityRepository {
     Page<Activity> findPublishedUpcomingByCity(String city, Instant now, Pageable pageable);
 
     /**
-     * Atomic, race-free seat reservation. Increments {@code booked_count} in a single
-     * SQL statement only when the activity is PUBLISHED, in the future, and has remaining
-     * capacity. Returns the number of affected rows (0 = could not reserve).
+     * Atomic, race-free seat reservation. Increments {@code booked_count} by {@code qty}
+     * in a single SQL statement only when the activity is PUBLISHED, in the future, and
+     * has at least {@code qty} remaining capacity. Returns the number of affected rows
+     * (0 = could not reserve, 1 = success).
      */
-    int reserveSeatAtomic(UUID id, Instant now);
+    int reserveSeatsAtomic(UUID id, int qty, Instant now);
 
-    int releaseSeatAtomic(UUID id);
+    /**
+     * Atomic seat release. Decrements {@code booked_count} by {@code qty} only when the
+     * current value is {@code >= qty} (defensive against double-release).
+     */
+    int releaseSeatsAtomic(UUID id, int qty);
 }

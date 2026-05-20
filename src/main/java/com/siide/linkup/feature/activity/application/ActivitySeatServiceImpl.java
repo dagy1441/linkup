@@ -26,23 +26,31 @@ public class ActivitySeatServiceImpl implements ActivitySeatService {
 
     @Override
     @Transactional
-    public boolean tryReserveSeat(UUID activityId) {
-        int updated = repository.reserveSeatAtomic(activityId, Instant.now(clock));
+    public boolean tryReserveSeats(UUID activityId, int qty) {
+        requirePositive(qty);
+        int updated = repository.reserveSeatsAtomic(activityId, qty, Instant.now(clock));
         if (updated == 0) {
-            log.debug("Seat reservation rejected for activity {}", activityId);
+            log.debug("Seat reservation rejected for activity {} qty={}", activityId, qty);
             return false;
         }
-        log.debug("Seat reserved on activity {}", activityId);
+        log.debug("Reserved {} seat(s) on activity {}", qty, activityId);
         return true;
     }
 
     @Override
     @Transactional
-    public void releaseSeat(UUID activityId) {
-        int updated = repository.releaseSeatAtomic(activityId);
+    public void releaseSeats(UUID activityId, int qty) {
+        requirePositive(qty);
+        int updated = repository.releaseSeatsAtomic(activityId, qty);
         if (updated == 0) {
-            log.warn("Release seat had no effect for activity {} (booked count already 0 or activity missing)",
-                    activityId);
+            log.warn("Release {} seat(s) had no effect for activity {} (booked count too low or activity missing)",
+                    qty, activityId);
+        }
+    }
+
+    private static void requirePositive(int qty) {
+        if (qty <= 0) {
+            throw new IllegalArgumentException("qty must be > 0");
         }
     }
 }

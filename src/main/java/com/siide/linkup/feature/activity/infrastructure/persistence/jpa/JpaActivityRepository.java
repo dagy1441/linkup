@@ -39,21 +39,21 @@ public interface JpaActivityRepository extends JpaRepository<Activity, UUID>, Ac
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             UPDATE Activity a
-               SET a.bookedCount = a.bookedCount + 1
+               SET a.bookedCount = a.bookedCount + :qty
              WHERE a.id = :id
                AND a.status = com.siide.linkup.feature.activity.domain.model.ActivityStatus.PUBLISHED
                AND a.startsAt > :now
-               AND a.bookedCount < a.capacity
+               AND a.bookedCount + :qty <= a.capacity
             """)
-    int reserveSeatAtomic(@Param("id") UUID id, @Param("now") Instant now);
+    int reserveSeatsAtomic(@Param("id") UUID id, @Param("qty") int qty, @Param("now") Instant now);
 
     @Override
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             UPDATE Activity a
-               SET a.bookedCount = a.bookedCount - 1
+               SET a.bookedCount = a.bookedCount - :qty
              WHERE a.id = :id
-               AND a.bookedCount > 0
+               AND a.bookedCount >= :qty
             """)
-    int releaseSeatAtomic(@Param("id") UUID id);
+    int releaseSeatsAtomic(@Param("id") UUID id, @Param("qty") int qty);
 }

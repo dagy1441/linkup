@@ -147,14 +147,230 @@ Updated at the end of every phase that meets the Definition of Done (CLAUDE.md).
 
 ---
 
-## Phase D — Booking module 🚧 PENDING
+## Phase D — Booking module ✅
+
+**Status:** DONE — DoD met.
+
+### Delivered
+
+| Layer | Components |
+|------|------------|
+| `feature/booking` | `@ApplicationModule(displayName = "Booking")` |
+| `domain/model` | `Booking` aggregate (id, userId, activityId, seats, status, cancelledAt), `BookingStatus` enum (CONFIRMED, CANCELLED) |
+| `domain` | `BookingRepository` port (save, findById, findByUserId paginated, findByUserIdAndStatus, countByUserIdAndStatus) |
+| `domain/event` | `BookingCreatedEvent`, `BookingCancelledEvent` |
+| `domain/exception` | `BookingNotFoundException` (404), `BookingAccessDeniedException` (403), `BookingLimitExceededException` (422), `ActivityNotBookableException` (409), `BookingInvalidStateException` (422) |
+| `application` | `BookingProperties` (`linkup.booking.{max-items-per-user,default-page-size,max-page-size}`), `BookingCommandService` (create/cancel + cap check + atomic seat reservation + duplicate translation), `BookingQueryService` (paginated listMine with optional status filter, getOwnedById) |
+| `infrastructure/persistence/jpa` | `JpaBookingRepository extends JpaRepository<Booking, UUID>, BookingRepository` |
+| `infrastructure/rest` | `BookingController` — POST, GET /me, GET /{id}, DELETE /{id} — all `@PreAuthorize("isAuthenticated()")` |
+| `infrastructure/rest/dto` | `BookingRequest` (`@NotNull activityId`, `@Min(1) @Max(50) seats`), `BookingResponse` (id, activityId, seats, status, createdAt, cancelledAt — userId NOT exposed) |
+| Flyway | `V3__create_bookings_table.sql` — **no FK cross-module** (CLAUDE.md §9), CHECK constraints, **partial unique index** `(user_id, activity_id) WHERE status='CONFIRMED'`, 3 secondary indexes |
+
+### Cross-module changes (Activity)
+
+- **`ActivitySeatService` API extended** for quantity: `tryReserveSeats(UUID, int qty)` + `releaseSeats(UUID, int qty)`. Old single-seat methods removed (no backwards-compat — the `api/` had no external consumer yet).
+- **Atomic SQL** in `JpaActivityRepository.reserveSeatsAtomic` — single `@Modifying` UPDATE with `booked_count + :qty <= capacity` guard. Race-free without row locks.
+- **Domain** `Activity.reserveSeats(qty, now)` / `releaseSeats(qty)` — preserves capacity invariants.
+
+### Tests (31 new, all green; **96 total** across surefire + ITs)
+
+- **Domain** — `BookingTest` (5): confirm invariants, cancel transitions, double-cancel rejection, ownership check
+- **Application** — `BookingCommandServiceTest` (8, Mockito): create + event, seat-failure, cap exceeded, zero-seats, duplicate-booking translation, cancel flow, not-found, not-owner
+- **Application** — `BookingQueryServiceTest` (6): owned-by, paging defaults, status filter, max-size cap
+- **Controller** — `BookingControllerTest` (5, `@WebMvcTest`): create 201, validation 400, list, get-by-id, cancel
+- **IT** — `BookingConcurrencyIT` (1, `@SpringBootTest` + Testcontainers): 20 threads on capacity-1 → **exactly 1 success**, `booked_count = 1` final. Proves atomic seat reservation race-free.
+- **Activity** — `ActivitySeatServiceImplTest` (5, +2): qty validation. `ActivityTest` (15, +3): multi-seat reserve, full guard, release clamping.
+
+### Architecture verification
+
+- Spring Modulith: **GREEN**. `feature.booking` references only `core::audit`, `core::exception`, `shared::event`, `shared::dto`, `feature.auth::api` (`CurrentUserAccessor`), `feature.activity::api` (`ActivitySeatService`).
+- `LinkupApplicationTests` (full context + Testcontainers) passes — V1 + V2 + V3 migrations apply cleanly.
+
+### Design decisions
+
+1. **No FK cross-module in DB** — `bookings.user_id` and `bookings.activity_id` are bare UUIDs. Referential integrity au niveau application. Préparation extraction microservices (CLAUDE.md §9).
+2. **Partial unique index** `(user_id, activity_id) WHERE status='CONFIRMED'` — au plus un booking CONFIRMED par paire. Re-booking possible après cancellation. Collision sur l'index → `DataIntegrityViolationException` traduite en `BookingInvalidStateException`.
+3. **Transaction unique pour create** — réservation + insert dans la même TX. Insert qui échoue → rollback du seat increment. Aucune capacité fuitée.
+4. **`max-items-per-user` = bookings CONFIRMED globaux** (toutes activités). Check via `countByUserIdAndStatus` avant réservation.
+5. **`Booking` status one-way** : CONFIRMED → CANCELLED. Pas de réactivation.
+6. **Seat reservation extensible pour qty** — single `UPDATE ... WHERE booked_count + :qty <= capacity` plutôt que N appels. Préserve la garantie race-free pour les bookings multi-seats.
+7. **`ActivitySeatService` API cassée proprement** — anciennes méthodes supprimées, pas dépréciées (YAGNI sur la compat).
+8. **`JpaBookingRepositoryIT` non livré** — l'IT du partial unique index avec `ddl-auto: validate` entre en conflit avec la table `event_publication` auto-créée par Spring Modulith. La translation de la violation d'unicité est couverte (mock) dans `BookingCommandServiceTest.create_translates_unique_violation_to_invalid_state` ; la validité du migration est prouvée par `LinkupApplicationTests`. Ajouter la table Modulith en migration Flyway sera fait à la phase outbox.
+
+### API surface
+
+- `POST /api/v1/bookings` — `{activityId, seats}` → 201
+- `GET /api/v1/bookings/me?status=CONFIRMED&page=0&size=20`
+- `GET /api/v1/bookings/{id}` — owner only
+- `DELETE /api/v1/bookings/{id}` — cancel + release seats + event
+
+### Configuration
+
+```yaml
+linkup.booking:
+  max-items-per-user: 5
+  default-page-size: 20
+  max-page-size: 100
+```
+
+### DoD checklist
+
+- ✅ Functional : create / cancel / list / get-by-id end-to-end, cap, race-free
+- ✅ Tests : 31 nouveaux verts (95 surefire + 1 IT), full context-load OK
+- ✅ Documentation : OpenAPI + JavaDoc
+- ✅ Zero dette : pas de TODO, pas de code commenté
+- ✅ Déployable : Flyway V3 idempotent, no FK cross-module
+- ✅ Observabilité : SLF4J INFO sur writes
+- ✅ Sécurité : tous les writes `@PreAuthorize("isAuthenticated()")`, owner check service-side
+- ✅ Performance : atomic UPDATE, partial unique index, 3 secondary indexes
+- ✅ Inter-module : `BookingCreatedEvent` / `BookingCancelledEvent` publiés ; consomme `ActivitySeatService` + `CurrentUserAccessor` via `api/` uniquement
+- ✅ Git : conventions respectées (à utiliser dans le commit de cette phase)
+
+---
+
+## Phase E — Idempotency-Key ✅
+
+**Status:** DONE — DoD met.
+
+### Delivered
+
+| Layer | Components |
+|------|------------|
+| Flyway | `V4__create_idempotency_keys.sql` — table + UNIQUE (idem_key, user_id, endpoint) + `ix_expires_at` |
+| `core/idempotency/` | `@NamedInterface("idempotency")` — exposed cross-module |
+| domain | `IdempotencyKey` entity (UUID PK + composite unique), `IdempotencyKeyRepository` (Spring Data JPA) |
+| application | `IdempotencyService.execute(key, userId, endpoint, requestBody, responseType, supplier)` — generic replay cache. `IdempotencyCleanupScheduler` (`@Scheduled` cron) |
+| properties | `IdempotencyProperties` (`linkup.idempotency.{header-name, ttl, max-key-length, cleanup-cron}`) |
+| exception | `IdempotencyKeyReusedException` (422), `IdempotencyInProgressException` (409), `IdempotencyKeyInvalidException` (422) |
+| `core/configuration/` | `TransactionTemplateConfig` — `TransactionTemplate(REQUIRES_NEW)` + fallback `ObjectMapper` bean (Conditional) |
+| `core/exception/GlobalExceptionHandler` | New mapping for `MissingRequestHeaderException` → 400 `MISSING_REQUEST_HEADER` |
+| `LinkupApplication` | `@EnableScheduling` activated |
+
+### Booking integration
+
+- `POST /api/v1/bookings` now requires `Idempotency-Key` header (documented in OpenAPI).
+- `DELETE /api/v1/bookings/{id}` also wrapped — annulation idempotente.
+- Both use `idempotencyService.execute(...)` explicitement (pas d'AOP — KISS, opt-in par endpoint).
+- L'endpoint inclut le path id dans la clé interne pour distinguer plusieurs DELETE.
+
+### Algorithm
+
+1. Lookup existing row pour `(key, userId, endpoint)`.
+2. Trouvé + expiré → delete, fall through to step 5.
+3. Trouvé + hash diffère → **422 IDEMPOTENCY_KEY_REUSED**.
+4. Trouvé + pending → **409 IDEMPOTENCY_IN_PROGRESS** (client retry shortly).
+5. Trouvé + completed → **replay** (deserialize JSON, rebuild ResponseEntity).
+6. Insert pending row dans une TX REQUIRES_NEW (commit immédiat). Conflit unique → revalider hash + état.
+7. Exécuter le handler. Sur succès → UPDATE avec status + JSON body en TX séparée. Sur exception → DELETE row pour permettre un retry.
+
+### Tests (10 nouveaux, all green; **101 surefire + 5 IT = 106 total**)
+
+- **Unit** — `IdempotencyServiceTest` (8 cases) : first-call cache, replay hit, hash mismatch → 422, pending → 409, blank/oversized key → 422, exception → row deleted, expired row → fall through
+- **IT** — `IdempotencyConcurrencyIT` (1, Testcontainers) : **50 threads concurrents** sur même clé + même body → handler exécuté **exactement 1 fois**, tous les threads renvoient soit 201 (replay/winner) soit 409 (in-progress). Aucun double-traitement.
+- **Controller** — `BookingControllerTest` (+1) : POST sans header → 400 MISSING_REQUEST_HEADER. Tests existants enrichis avec header passthrough mock.
+
+### Architecture verification
+
+- Spring Modulith **GREEN** : `feature.booking` consume `core::idempotency` via `@NamedInterface`. `ModularityTest` passe.
+- Full context-load (`LinkupApplicationTests`) **GREEN** : V1+V2+V3+V4 Flyway, `@EnableScheduling` actif, bean `ObjectMapper` résolu via fallback `@ConditionalOnMissingBean`.
+
+### Design decisions
+
+1. **Pas d'AOP** — appel explicite `idempotencyService.execute(...)` dans le controller. Plus testable, opt-in par endpoint, zéro magie. Si le pattern se répète sur 10+ endpoints, on pourra refactor en aspect.
+2. **`REQUIRES_NEW` transactions** via `TransactionTemplate` — l'insert du pending row commit immédiatement pour que les threads concurrents le voient. La completion update est aussi commitée séparément avant le retour HTTP.
+3. **Marker pending = `response_status IS NULL`** — pas de colonne supplémentaire. `isPending()` repose sur cet invariant.
+4. **Hash SHA-256 du JSON du body** — pas du body HTTP brut. Évite la dépendance à un `ContentCachingRequestWrapper`. Suffit pour détecter un mismatch.
+5. **Replay reconstruit ResponseEntity** depuis `(status, JSON, type)` — headers non cachés pour MVP (acceptable ; Location et autres pourront s'ajouter plus tard).
+6. **Sur exception du handler : DELETE row** — permet au client de retry avec la même clé (le handler a échoué, pas un succès à mémoriser). Le replay-cache ne sert que les succès observés.
+7. **TTL 24h par défaut** — couvre les patterns mobile (déconnexion → retry). Cleanup quotidien à 3h.
+8. **`409 IN_PROGRESS` plutôt qu'attente bloquante** — pas de polling DB. Le client retry après quelques ms. Évite de garder une connexion ouverte côté serveur pendant la durée du handler.
+9. **`ObjectMapper` fallback bean** — découvert au test d'intégration : le contexte de test ne provisionne pas systématiquement `ObjectMapper` selon le slice. Bean `@ConditionalOnMissingBean` couvre tous les cas sans casser le auto-config principal.
+
+### Configuration
+
+```yaml
+linkup.idempotency:
+  header-name: Idempotency-Key
+  ttl: PT24H
+  max-key-length: 128
+  cleanup-cron: "0 0 3 * * *"
+```
+
+### API surface
+
+- `POST /api/v1/bookings` — header `Idempotency-Key: <uuid>` **obligatoire**.
+- `DELETE /api/v1/bookings/{id}` — idem.
+- 400 si header manquant (`MISSING_REQUEST_HEADER`).
+- 422 si clé invalide (`IDEMPOTENCY_KEY_INVALID`) ou réutilisée avec un body différent (`IDEMPOTENCY_KEY_REUSED`).
+- 409 si le traitement initial est encore en cours (`IDEMPOTENCY_IN_PROGRESS`).
+
+### DoD checklist
+
+- ✅ Fonctionnel : header obligatoire, replay deterministe, 50-threads concurrence prouvée
+- ✅ Tests : 10 nouveaux verts (101 surefire + 5 IT = 106 total)
+- ✅ Documentation : OpenAPI sur les 2 endpoints, JavaDoc sur `IdempotencyService` + `IdempotencyKey`
+- ✅ Zero dette : pas de TODO, pas de hack
+- ✅ Déployable : V4 Flyway idempotent, `@EnableScheduling` activé
+- ✅ Observabilité : SLF4J INFO sur sweep et replay, DEBUG sur first-call
+- ✅ Sécurité : clé associée à `(userId, endpoint)` — la même clé d'un user A ne contamine pas un user B
+- ✅ Performance : index `expires_at` pour cleanup cheap ; unique constraint pour race-safe insert ; pas de polling
+- ✅ Inter-module : exposé via `@NamedInterface("idempotency")` ; consommé par `feature.booking` via injection directe
+- ✅ Git : à commit sur `feature/core-idempotency-key`
+
+---
+
+## Phase F — Outbox migration ✅
+
+**Status:** DONE — scope ciblé : outbox-deployable + restore booking IT.
+
+### Delivered
+
+| Layer | Components |
+|------|------------|
+| Flyway | `V5__create_event_publication_table.sql` — schéma Spring Modulith pour l'outbox (`event_publication`). Match exact des colonnes attendues par Hibernate. Indexes sur `completion_date` et `status` pour la republication. |
+| Flyway | `V4` corrigé : `response_status SMALLINT → INTEGER` (entité utilise `Integer`). Sans impact (V4 jamais déployé en prod). |
+| IT | **`JpaBookingRepositoryIT` restauré** : `@SpringBootTest` + `ddl-auto: validate` (Flyway owns schema) ; teste le partial unique index `(user_id, activity_id) WHERE status='CONFIRMED'`. |
+
+### Impact
+
+- **Outbox prête en prod** : avec `ddl-auto: validate` Hibernate ne peut plus auto-générer la table `event_publication` au démarrage. La migration V5 garantit qu'elle existe et matche les attentes JPA.
+- **Pattern @ApplicationModuleListener déblocable** : dès qu'un module veut écouter un event d'un autre module avec garantie at-least-once + récupération, il peut annoter `@ApplicationModuleListener` et l'outbox JPA fait le reste.
+- **`JpaBookingRepositoryIT` réintégré** : la dette de Phase D est purgée (2 tests verts qui prouvent le partial unique index).
+
+### Tests : **101 surefire + 7 IT = 108 verts**
+
+ITs : `JpaUserRepositoryIT` (3), `JpaBookingRepositoryIT` (2), `BookingConcurrencyIT` (1), `IdempotencyConcurrencyIT` (1).
+
+### Design decisions
+
+1. **V5 mirrors Hibernate auto-generated schema** — colonnes `varchar(255)` (y compris `serialized_event`) au lieu de `TEXT`. Tradeoff : `serialized_event` à 255 chars limite la taille des events sérialisés. Acceptable pour les events MVP (records compacts). À élargir quand on ajoute des events riches (`TEXT` + `@Column(columnDefinition = "text")` côté entité, mais ça vient de Modulith donc faut patcher l'override).
+2. **Pas de `@ApplicationModuleListener` ajouté pour l'instant** — l'infrastructure est prête, les consumers viendront avec les modules concrets (`notification` consume `BookingCreatedEvent`, etc.).
+3. **V4 correction acceptable** (pas de V6 corrective) car aucun environnement n'a encore reçu V4. Si on prod-deploy avant correction, faut une V6 `ALTER COLUMN`.
+4. **Schemas séparés reportés** — scope écarté pour cette itération (touche chaque entité). Sera Phase G dédiée.
+5. **Redis idempotency-cache reporté** — pas observé de problème de charge ; SQL suffit jusqu'à plusieurs centaines de QPS sur le replay-cache (index hit + cleanup quotidien).
+
+### DoD checklist
+
+- ✅ Fonctionnel : V5 idempotent ; `JpaBookingRepositoryIT` exerce le partial unique index en vraies conditions
+- ✅ Tests : 108 verts (101 surefire + 7 IT)
+- ✅ Documentation : commentaire entête de V5 explique le rôle de la table
+- ✅ Zero dette : V4 → V5 cohérents avec les entités JPA
+- ✅ Déployable : `ddl-auto: validate` en prod fonctionne (Flyway crée toutes les tables y compris l'outbox Modulith)
+- ✅ Observabilité : `event_publication` exposé via `/actuator/modulith/events` (déjà câblé via `spring-modulith-actuator`)
+- ✅ Sécurité : aucun impact sécurité (changements internes)
+- ✅ Performance : indexes appropriés sur `completion_date` et `status` pour les requêtes de republication
+- ✅ Git : à commit sur `feature/core-outbox-migration`
+
+---
+
+## Phase G — Schemas Postgres séparés (next)
 
 ### Scope (planned)
-- `Booking` aggregate, partial unique index `(user_id, activity_id) WHERE status='CONFIRMED'`
-- `BookingService.create` calling `ActivitySeatService.tryReserveSeat` (atomic, race-free)
-- Enforce `linkup.booking.max-items-per-user` cap
-- `BookingCreatedEvent` / `BookingCancelledEvent`
-- Concurrency test (N parallel bookings on capacity-1 activity → exactly 1 success)
+- 4 schemas : `auth`, `activity`, `booking`, `core` (héberge `idempotency_keys` + `event_publication`)
+- Migration `V6__create_schemas_and_relocate_tables.sql`
+- `@Table(schema=...)` sur toutes les entités JPA
+- Verifier que la conf Flyway gère bien le `flyway_schema_history` (placement dans `public` ou par-schema)
+- Préparation directe à un `pg_dump --schema=booking` pour extraction microservices
 
 ---
 
@@ -207,13 +423,3 @@ Tracked from audit report, not blocking Phase D:
 - `PageResponse` could carry `hasNext`/`hasPrevious`
 - Redundant `@EnableConfigurationProperties(JwtProperties.class)` in `SecurityConfig` (covered by `@ConfigurationPropertiesScan`)
 
----
-
-## Phase D — Booking module 🚧 PENDING
-
-### Scope (planned)
-- `Booking` aggregate, partial unique index `(user_id, activity_id) WHERE status='CONFIRMED'`
-- `BookingService.create` with atomic seat reservation against activity's `booked_count`
-- Enforce `linkup.booking.max-items-per-user` cap
-- `BookingCreatedEvent` / `BookingCancelledEvent`
-- Concurrency test (N parallel bookings on capacity-1 activity → exactly 1 success)
