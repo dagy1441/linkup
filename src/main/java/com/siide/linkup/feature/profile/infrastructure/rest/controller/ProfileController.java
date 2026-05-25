@@ -2,8 +2,10 @@ package com.siide.linkup.feature.profile.infrastructure.rest.controller;
 
 import com.siide.linkup.feature.auth.api.CurrentUserAccessor;
 import com.siide.linkup.feature.profile.application.ProfileCommandService;
+import com.siide.linkup.feature.profile.application.dto.UpdateInterestsCommand;
 import com.siide.linkup.feature.profile.application.dto.UpdateProfileCommand;
 import com.siide.linkup.feature.profile.domain.model.Profile;
+import com.siide.linkup.feature.profile.infrastructure.rest.dto.InterestsRequest;
 import com.siide.linkup.feature.profile.infrastructure.rest.dto.ProfileRequest;
 import com.siide.linkup.feature.profile.infrastructure.rest.dto.ProfileResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
@@ -53,6 +56,17 @@ public class ProfileController {
         Profile updated = commandService.update(userId,
                 new UpdateProfileCommand(body.bio(), body.city(), body.dateOfBirth(), body.gender()));
         log.info("PUT /profile/me userId={} complete={}", userId, updated.isComplete());
+        return ResponseEntity.ok(ProfileResponse.from(updated));
+    }
+
+    @PutMapping("/me/interests")
+    @Operation(summary = "Replace the authenticated user's interests with the given catalogue slugs. Unknown slugs are silently dropped.")
+    public ResponseEntity<ProfileResponse> updateInterests(@Valid @RequestBody InterestsRequest body) {
+        UUID userId = currentUserAccessor.requireCurrentUserId();
+        Set<String> slugs = body.slugs() == null ? Set.of() : body.slugs();
+        Profile updated = commandService.updateInterests(userId, new UpdateInterestsCommand(slugs));
+        log.info("PUT /profile/me/interests userId={} count={} complete={}",
+                userId, updated.getInterestSlugs().size(), updated.isComplete());
         return ResponseEntity.ok(ProfileResponse.from(updated));
     }
 }
