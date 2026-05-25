@@ -103,14 +103,27 @@ public class IdempotencyService {
             return replayCachedResponse(winner, responseType);
         }
 
+        ResponseEntity<T> response;
         try {
-            ResponseEntity<T> response = handler.get();
-            completeInNewTx(pending.getId(), response);
-            return response;
+            response = handler.get();
         } catch (RuntimeException businessError) {
+            // Handler failed — delete the pending row so a retry can re-attempt.
             deleteInNewTx(pending.getId());
             throw businessError;
         }
+        // Handler succeeded. Caching the response is best-effort: if the completion
+        // update fails (DB blip, deadlock), we intentionally KEEP the pending row.
+        // - The side effects of the handler are already committed.
+        // - Any retry with the same key will get 409 IN_PROGRESS until TTL expires.
+        // - The alternative (delete on cache failure) would let the caller replay
+        //   the request and cause a second execution — way worse than a 409.
+        try {
+            completeInNewTx(pending.getId(), response);
+        } catch (RuntimeException cacheError) {
+            log.error("Failed to cache idempotency response key={} endpoint={} — handler succeeded, "
+                    + "pending row retained to block retries until TTL", key, endpoint, cacheError);
+        }
+        return response;
     }
 
     private void validateKey(String key) {

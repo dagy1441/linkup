@@ -152,6 +152,26 @@ class IdempotencyServiceTest {
     }
 
     @Test
+    void execute_keeps_pending_row_when_completion_update_fails_so_retry_returns_in_progress() {
+        // First call: handler succeeds, but the completion update throws. The pending
+        // row must NOT be deleted — otherwise a retry with the same key would
+        // re-execute the handler (double booking).
+        when(repository.findByKeyAndUserIdAndEndpoint(key, userId, endpoint))
+                .thenReturn(Optional.empty());
+        when(repository.findById(any(UUID.class)))
+                .thenThrow(new org.springframework.dao.DataAccessResourceFailureException("db down"));
+
+        ResponseEntity<String> response = service.execute(key, userId, endpoint, body(1), String.class,
+                () -> ResponseEntity.status(HttpStatus.CREATED).body("ok"));
+
+        // Handler ran and the client gets the success response — caching is best-effort.
+        assertThat(response.getStatusCode().value()).isEqualTo(201);
+        assertThat(response.getBody()).isEqualTo("ok");
+        // The pending row was NOT deleted (the row will live until TTL and block retries).
+        verify(repository, never()).deleteById(any(UUID.class));
+    }
+
+    @Test
     void execute_falls_through_when_existing_row_is_expired() {
         IdempotencyKey expired = new IdempotencyKey(key, userId, endpoint,
                 sha256OfBody(1), now.minus(Duration.ofDays(2)), now.minus(Duration.ofHours(1)));
