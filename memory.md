@@ -363,6 +363,64 @@ ITs : `JpaUserRepositoryIT` (3), `JpaBookingRepositoryIT` (2), `BookingConcurren
 
 ---
 
+## Sprint Hardening S0 ✅
+
+**Status:** DONE — DoD met for the 2 HIGH + 4 MEDIUM + 5 LOW items audited.
+
+### Trigger
+
+A senior-review pass against the merged booking + idempotency + activity + auth
+code (`docs/code-review-S0.md`) flagged 2 HIGH, 5 MEDIUM, 9 LOW + OWASP API Top 10
+gaps. The HIGH and most MEDIUM items were fixed in PR #4 before any new feature
+work, on branch `chore/hardening-s0`.
+
+### Delivered
+
+| Severity | ID | Item | Outcome |
+|----------|----|----|---------|
+| HIGH | H-1 | `IdempotencyService` no longer deletes the pending row when the completion update fails | Best-effort cache; pending row retained → retries get 409 IN_PROGRESS instead of replaying the handler. Test `execute_keeps_pending_row_when_completion_update_fails_so_retry_returns_in_progress` |
+| HIGH | H-2 | CORS source bean wired up via `CorsProperties` | Driven by `linkup.security.cors.*` env vars. Localhost defaults for dev, prod overrides via `LINKUP_SECURITY_CORS_ALLOWED_ORIGINS`. New `CorsPropertiesTest` (3 cases) |
+| MED  | M-2 | Composite index `bookings (user_id, status, created_at DESC)` | Replaces 2 single-column indexes. Flyway V6 + `@Index` synced |
+| MED  | M-3 | Functional index `LOWER(city)` on activities | Replaces plain `city` index that never matched the `LOWER()` predicate. Flyway V6 |
+| MED  | M-4 | `ActivitySeatService.releaseSeats` throws `SeatReleaseFailedException` on 0-row UPDATE | Caller's `@Transactional` rolls back the booking cancel — no orphaned seats |
+| MED  | M-5 | Payload caps (Tomcat 256KB form / multipart 1MB / idempotency body 64KB) | New `IdempotencyProperties.maxBodyBytes`; 422 with `IDEMPOTENCY_KEY_INVALID` above the cap |
+| LOW  | L-1 | Regex `^[A-Za-z0-9_-]+$` on Idempotency-Key | Blocks whitespace / unicode / shell metachars |
+| LOW  | L-3 | `BookingController.cancel` passes `null` body to idempotency (id already in endpoint key) | Removed redundant `Map.of("id", id)` |
+| LOW  | L-4 | `PageResponse.hasNext` / `hasPrevious` | Mobile-friendly pagination envelope |
+| LOW  | L-6 | Misplaced `@SuppressWarnings("unchecked")` removed from `UserProvisioningService.extractRealmRoles` | — |
+| LOW  | L-7 (partial) | Unused `spring.cache.type: redis` removed | Mail starter retained for Sprint S2 |
+| Infra | — | **GitHub Actions CI pipeline** (`.github/workflows/ci.yml`) | `mvn clean test` on every PR + push to main, Maven cache, concurrency cancellation, surefire upload on failure |
+
+### Deferred (separate PRs)
+
+| Severity | ID | Why deferred |
+|----------|----|--------------|
+| MED | M-1 | activity cancel → bookings compensation needs the `@ApplicationModuleListener` path; tied to Sprint S2 (notification) |
+| LOW | L-8 | DRY JWT claim path helper between `JwtAuthConverter` and `UserProvisioningService` — small refactor on its own PR |
+| LOW | L-9 | Prometheus `MeterFilter` to homogenise the `module.key` tag on `spring.security.authorizations` |
+| API4 (OWASP) | — | Bucket4j rate limiting on `/api/v1/bookings` — needs design (per-user vs per-IP, Redis-backed bucket) |
+
+### Tests
+
+**108/108 green** at end of sprint (was 101 at start; +1 idempotency-completion-fail,
++3 CORS, +1 oversized-body, +1 seat-release-strict, +1 regex disallowed-char).
+
+### CI
+
+First green run: `26418935326`. Pipeline includes `ModularityTest` + Testcontainers ITs.
+Pre-condition fixed: `git update-index --chmod=+x mvnw` (Windows checkout drops the bit).
+
+### DoD checklist
+
+- ✅ All HIGH fixed + tests
+- ✅ All MEDIUM fixed or explicitly deferred with reason
+- ✅ ≥ 80% of LOW fixed (5/9)
+- ✅ GitHub Actions CI green on the PR
+- ✅ memory.md updated (this section)
+- ⏳ PR #4 squash-merge pending user OK
+
+---
+
 ## Phase G — Schemas Postgres séparés (next)
 
 ### Scope (planned)
