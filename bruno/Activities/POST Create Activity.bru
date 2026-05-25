@@ -10,12 +10,12 @@ post {
   auth: bearer
 }
 
-auth:bearer {
-  token: {{token}}
-}
-
 headers {
   Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
 }
 
 body:json {
@@ -41,12 +41,12 @@ script:post-response {
 
 docs {
   ## POST /api/v1/activities
-
+  
   Crée une nouvelle activité.
   **Rôle requis : `ORGANIZER`** → utiliser le token Alice.
-
+  
   L'`activityId` de la réponse est automatiquement stocké dans l'environnement.
-
+  
   **Champs** :
   | Champ       | Requis | Contraintes                    |
   |-------------|--------|--------------------------------|
@@ -58,7 +58,7 @@ docs {
   | longitude   |        | double                         |
   | startsAt    | ✅      | ISO-8601, doit être dans le futur |
   | capacity    | ✅      | entier > 0                     |
-
+  
   **Erreurs** :
   - `401` → token absent ou expiré
   - `403` → rôle ORGANIZER manquant (ex: token Bob)

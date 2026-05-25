@@ -1,0 +1,37 @@
+meta {
+  name: Get Token Admin (Admin)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{keycloakUrl}}/realms/{{realm}}/protocol/openid-connect/token
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  grant_type: password
+  client_id: {{clientId}}
+  username: admin@linkup.io
+  password: admin
+}
+
+script:post-response {
+  const data = res.getBody();
+  if (data && data.access_token) {
+    bru.setEnvVar("token", data.access_token);
+    console.log("Token Admin enregistré (expires_in=" + data.expires_in + "s)");
+  }
+}
+
+docs {
+  ## Get Token — Admin (Platform admin)
+
+  Récupère un JWT Keycloak pour `admin@linkup.io`.
+  Admin a uniquement le rôle **admin** → il NE peut PAS créer d'activités
+  (le endpoint exige `ROLE_ORGANIZER`). Pour qu'il puisse, ajouter `organizer`
+  à ses `realmRoles` dans `linkup-realm.json` + UI Keycloak.
+
+  **Credentials seed** : `admin@linkup.io / admin`
+}
