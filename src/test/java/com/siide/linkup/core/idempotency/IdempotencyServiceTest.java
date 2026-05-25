@@ -126,6 +126,17 @@ class IdempotencyServiceTest {
     }
 
     @Test
+    void execute_rejects_key_with_disallowed_chars() {
+        // Whitespace, unicode, shell metacharacters — anything outside [A-Za-z0-9_-]
+        for (String bad : new String[]{"abc 123", "abc;ls", "abc\nx", "abc/123"}) {
+            assertThatThrownBy(() -> service.execute(bad, userId, endpoint, body(1), String.class,
+                    () -> ResponseEntity.ok("nope")))
+                    .as("key=%s", bad)
+                    .isInstanceOf(IdempotencyKeyInvalidException.class);
+        }
+    }
+
+    @Test
     void execute_rejects_blank_key() {
         assertThatThrownBy(() -> service.execute(" ", userId, endpoint, body(1), String.class,
                 () -> ResponseEntity.ok("nope")))

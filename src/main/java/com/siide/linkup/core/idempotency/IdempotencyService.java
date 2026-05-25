@@ -22,6 +22,7 @@ import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 
 /**
  * Replay-cache for mutating endpoints, persisted in {@code idempotency_keys}.
@@ -41,6 +42,9 @@ import java.util.function.Supplier;
 public class IdempotencyService {
 
     private static final Logger log = LoggerFactory.getLogger(IdempotencyService.class);
+    // Restrict to URL-safe + UUID-friendly charset. Blocks whitespace, unicode,
+    // control chars (which would corrupt log lines) and shell metacharacters.
+    private static final Pattern KEY_PATTERN = Pattern.compile("^[A-Za-z0-9_-]+$");
 
     private final IdempotencyKeyRepository repository;
     private final ObjectMapper objectMapper;
@@ -137,6 +141,10 @@ public class IdempotencyService {
         }
         if (key.length() > properties.maxKeyLength()) {
             throw new IdempotencyKeyInvalidException("length exceeds " + properties.maxKeyLength());
+        }
+        if (!KEY_PATTERN.matcher(key).matches()) {
+            throw new IdempotencyKeyInvalidException(
+                    "must match " + KEY_PATTERN.pattern() + " (URL-safe characters only)");
         }
     }
 

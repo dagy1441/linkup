@@ -38,12 +38,6 @@ spring:
     baseline-on-migrate: true
     locations: classpath:db/migration
 
-  # =======================
-  # CACHE TYPE
-  # =======================
-  cache:
-    type: redis
-
 # =======================
 # APP CONFIG (DOMAIN)
 # =======================

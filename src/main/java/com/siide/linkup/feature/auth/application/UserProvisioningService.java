@@ -82,7 +82,6 @@ public class UserProvisioningService {
         return null;
     }
 
-    @SuppressWarnings("unchecked")
     private static Set<String> extractRealmRoles(Jwt jwt) {
         Object realmAccess = jwt.getClaim("realm_access");
         if (!(realmAccess instanceof Map<?, ?> map)) return Collections.emptySet();
