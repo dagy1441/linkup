@@ -6,6 +6,7 @@ import com.siide.linkup.feature.profile.domain.model.ProfileStatus;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Set;
 import java.util.UUID;
 
 public record ProfileResponse(
@@ -16,6 +17,7 @@ public record ProfileResponse(
         LocalDate dateOfBirth,
         Gender gender,
         String photoKey,
+        Set<String> interests,
         boolean complete,
         ProfileStatus status,
         Instant deletionScheduledAt
@@ -29,6 +31,7 @@ public record ProfileResponse(
                 p.getDateOfBirth(),
                 p.getGender(),
                 p.getPhotoKey(),
+                p.getInterestSlugs(),
                 p.isComplete(),
                 p.getStatus(),
                 p.getDeletionScheduledAt()

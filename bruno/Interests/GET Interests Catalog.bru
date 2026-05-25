@@ -1,0 +1,30 @@
+meta {
+  name: GET Interests Catalog
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/interests
+  body: none
+  auth: none
+}
+
+docs {
+  ## GET /api/v1/interests
+
+  Liste tous les intérêts du catalogue, sortés par `sortOrder` puis slug.
+  **Endpoint public** — utilisé par l'écran d'onboarding (US-005) AVANT login.
+
+  **Réponse 200** :
+  ```json
+  [
+    { "slug": "foot",     "labelFr": "Football",     "labelEn": "Football",     "category": "SPORT",   "icon": "soccer-ball", "sortOrder": 10 },
+    { "slug": "basket",   "labelFr": "Basketball",   "labelEn": "Basketball",   "category": "SPORT",   "icon": "basketball",  "sortOrder": 11 },
+    ...
+  ]
+  ```
+
+  15 intérêts seed (V8 migration) répartis en 5 catégories :
+  SPORT · CULTURE · TECH · FOOD · OUTDOOR.
+}

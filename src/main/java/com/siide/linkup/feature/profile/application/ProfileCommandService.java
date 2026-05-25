@@ -1,6 +1,8 @@
 package com.siide.linkup.feature.profile.application;
 
+import com.siide.linkup.feature.profile.application.dto.UpdateInterestsCommand;
 import com.siide.linkup.feature.profile.application.dto.UpdateProfileCommand;
+import com.siide.linkup.feature.profile.domain.InterestCatalog;
 import com.siide.linkup.feature.profile.domain.ProfileRepository;
 import com.siide.linkup.feature.profile.domain.event.ProfileCompletedEvent;
 import com.siide.linkup.feature.profile.domain.model.Profile;
@@ -12,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -26,13 +29,16 @@ public class ProfileCommandService {
     private static final Logger log = LoggerFactory.getLogger(ProfileCommandService.class);
 
     private final ProfileRepository repository;
+    private final InterestCatalog interestCatalog;
     private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
 
     public ProfileCommandService(ProfileRepository repository,
+                                 InterestCatalog interestCatalog,
                                  ApplicationEventPublisher eventPublisher,
                                  Clock clock) {
         this.repository = repository;
+        this.interestCatalog = interestCatalog;
         this.eventPublisher = eventPublisher;
         this.clock = clock;
     }
@@ -62,13 +68,33 @@ public class ProfileCommandService {
         profile.update(cmd.bio(), cmd.city(), cmd.dateOfBirth(), cmd.gender(), Instant.now(clock));
         Profile saved = repository.save(profile);
 
+        fireIfNewlyCompleted(saved, wasComplete, userId, "updated");
+        return saved;
+    }
+
+    /**
+     * Replace the user's interests with the given catalogue slugs. Silently drops
+     * unknown / disabled slugs (caller can compare sizes if it wants to surface).
+     * Triggers {@link ProfileCompletedEvent} if completion is reached now.
+     */
+    @Transactional
+    public Profile updateInterests(UUID userId, UpdateInterestsCommand cmd) {
+        Profile profile = ensureProfile(userId);
+        boolean wasComplete = profile.isComplete();
+        Set<String> validSlugs = interestCatalog.filterValidSlugs(cmd.slugs());
+        profile.replaceInterests(validSlugs);
+        Profile saved = repository.save(profile);
+        fireIfNewlyCompleted(saved, wasComplete, userId, "interests-updated");
+        return saved;
+    }
+
+    private void fireIfNewlyCompleted(Profile saved, boolean wasComplete, UUID userId, String op) {
         if (!wasComplete && saved.isComplete()) {
             Instant now = Instant.now(clock);
             eventPublisher.publishEvent(ProfileCompletedEvent.of(saved.getId(), userId, now));
-            log.info("Profile completed id={} userId={}", saved.getId(), userId);
+            log.info("Profile completed id={} userId={} via op={}", saved.getId(), userId, op);
         } else {
-            log.info("Profile updated id={} userId={}", saved.getId(), userId);
+            log.info("Profile {} id={} userId={}", op, saved.getId(), userId);
         }
-        return saved;
     }
 }

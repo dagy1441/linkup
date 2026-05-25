@@ -70,7 +70,7 @@ class ProfileControllerTest {
     }
 
     @Test
-    void put_me_updates_and_returns_response() throws Exception {
+    void put_me_updates_and_returns_response_still_incomplete_without_interests() throws Exception {
         when(currentUserAccessor.requireCurrentUserId()).thenReturn(userId);
 
         Profile updated = Profile.empty(userId);
@@ -87,7 +87,30 @@ class ProfileControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.bio").value("Hi"))
                 .andExpect(jsonPath("$.city").value("Abidjan"))
-                .andExpect(jsonPath("$.complete").value(true));
+                // bio+city+DOB alone are NOT enough — needs ≥1 interest (US-005).
+                .andExpect(jsonPath("$.complete").value(false));
+    }
+
+    @Test
+    void put_me_interests_replaces_picks() throws Exception {
+        when(currentUserAccessor.requireCurrentUserId()).thenReturn(userId);
+
+        Profile updated = Profile.empty(userId);
+        updated.update("Hi", "Abidjan", LocalDate.of(1995, 1, 1), Gender.MALE,
+                java.time.Instant.parse("2026-05-25T10:00:00Z"));
+        updated.replaceInterests(java.util.Set.of("yoga", "foot"));
+        when(commandService.updateInterests(eq(userId), any())).thenReturn(updated);
+
+        com.siide.linkup.feature.profile.infrastructure.rest.dto.InterestsRequest body =
+                new com.siide.linkup.feature.profile.infrastructure.rest.dto.InterestsRequest(
+                        java.util.Set.of("yoga", "foot"));
+
+        mockMvc.perform(put("/api/v1/profile/me/interests")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(MAPPER.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.complete").value(true))
+                .andExpect(jsonPath("$.interests.length()").value(2));
     }
 
     @Test
