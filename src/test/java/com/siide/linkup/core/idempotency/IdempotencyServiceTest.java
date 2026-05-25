@@ -67,7 +67,7 @@ class IdempotencyServiceTest {
         };
         ObjectMapper mapper = new ObjectMapper();
         IdempotencyProperties props = new IdempotencyProperties("Idempotency-Key",
-                Duration.ofHours(24), 128, "0 0 3 * * *");
+                Duration.ofHours(24), 128, 64 * 1024, "0 0 3 * * *");
         service = new IdempotencyService(repository, mapper, props, inlineTx,
                 Clock.fixed(now, ZoneOffset.UTC));
     }
@@ -130,6 +130,18 @@ class IdempotencyServiceTest {
         assertThatThrownBy(() -> service.execute(" ", userId, endpoint, body(1), String.class,
                 () -> ResponseEntity.ok("nope")))
                 .isInstanceOf(IdempotencyKeyInvalidException.class);
+    }
+
+    @Test
+    void execute_rejects_oversized_request_body() {
+        // Build a Jackson-serializable map whose JSON exceeds 64 KB.
+        String huge = "x".repeat(70 * 1024);
+        java.util.Map<String, String> body = java.util.Map.of("payload", huge);
+
+        assertThatThrownBy(() -> service.execute(key, userId, endpoint, body, String.class,
+                () -> ResponseEntity.ok("nope")))
+                .isInstanceOf(IdempotencyKeyInvalidException.class)
+                .hasMessageContaining("exceeds");
     }
 
     @Test

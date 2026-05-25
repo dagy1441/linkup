@@ -67,7 +67,12 @@ public class IdempotencyService {
                                          Class<T> responseType,
                                          Supplier<ResponseEntity<T>> handler) {
         validateKey(key);
-        String hash = sha256(serialize(requestBody));
+        String serialized = serialize(requestBody);
+        if (serialized.length() > properties.maxBodyBytes()) {
+            throw new IdempotencyKeyInvalidException(
+                    "request body exceeds " + properties.maxBodyBytes() + " bytes (got " + serialized.length() + ")");
+        }
+        String hash = sha256(serialized);
         Instant now = Instant.now(clock);
 
         Optional<IdempotencyKey> existing = repository.findByKeyAndUserIdAndEndpoint(key, userId, endpoint);

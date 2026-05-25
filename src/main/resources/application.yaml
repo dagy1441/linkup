@@ -1,7 +1,18 @@
 server:
   port: ${SERVER_PORT:8080}
+  # Defensive caps on request size — protects the JVM from oversized payloads
+  # (idempotency hashing, jackson deserialization, log noise).
+  # MVP values; widen when US-030 brings photo upload (separate multipart path).
+  tomcat:
+    max-http-form-post-size: 256KB
+    max-swallow-size: 256KB
+  max-http-request-header-size: 16KB
 
 spring:
+  servlet:
+    multipart:
+      max-file-size: 1MB
+      max-request-size: 1MB
   application:
     name: linkup-backend
 
@@ -58,6 +69,7 @@ linkup:
     header-name: Idempotency-Key
     ttl: PT24H
     max-key-length: 128
+    max-body-bytes: 65536      # 64 KB — protects SHA-256 hashing from oversized payloads
     cleanup-cron: "0 0 3 * * *"
 
   activity:
