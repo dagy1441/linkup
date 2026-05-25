@@ -1,0 +1,41 @@
+meta {
+  name: 403 Bob tries to create activity
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/activities
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "title": "Bob essaie de créer une activité",
+    "city": "Abidjan",
+    "startsAt": "2026-08-01T08:00:00Z",
+    "capacity": 10
+  }
+}
+
+docs {
+  ## Test 403 — Bob (rôle user) tente de créer une activité
+
+  **Pré-requis** : récupérer le token Bob d'abord ("Get Token Bob").
+
+  **Résultat attendu** : `403 Forbidden`
+  ```json
+  { "status": 403, "error": "ACCESS_DENIED", "message": "..." }
+  ```
+
+  Vérifie que `@PreAuthorize("hasRole('ORGANIZER')")` fonctionne correctement.
+}

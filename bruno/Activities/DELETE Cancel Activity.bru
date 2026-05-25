@@ -1,0 +1,37 @@
+meta {
+  name: DELETE Cancel Activity
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{baseUrl}}/api/v1/activities/{{activityId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+docs {
+  ## DELETE /api/v1/activities/:id
+
+  Annule une activité (passe son statut à `CANCELLED`).
+  **Rôle requis : `ORGANIZER`** + être le créateur de l'activité.
+
+  ⚠️ L'annulation est **irréversible** côté activité.
+  Les bookings existants ne sont pas automatiquement annulés dans le MVP
+  (ce sera géré par un event `ActivityCancelledEvent` en V2).
+
+  **Réponse 200** :
+  ```json
+  { "status": "CANCELLED", ... }
+  ```
+
+  **Erreurs** :
+  - `401` → token absent
+  - `403` → rôle ORGANIZER manquant ou pas propriétaire
+  - `404` → activité introuvable
+  - `422` → activité déjà annulée
+}

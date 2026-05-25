@@ -1,0 +1,75 @@
+meta {
+  name: POST Create Booking
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/bookings
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  Content-Type: application/json
+  Idempotency-Key: {{idempotencyKey}}
+}
+
+vars:pre-request {
+  idempotencyKey: {{$randomUUID}}
+}
+
+body:json {
+  {
+    "activityId": "{{activityId}}",
+    "seats": 1
+  }
+}
+
+script:post-response {
+  const data = res.getBody();
+  if ((res.getStatus() === 201 || res.getStatus() === 200) && data && data.id) {
+    bru.setEnvVar("bookingId", data.id);
+    console.log("bookingId enregistré : " + data.id);
+  }
+}
+
+docs {
+  ## POST /api/v1/bookings
+
+  Crée une réservation pour l'utilisateur authentifié.
+  **Authentification requise** (tout rôle).
+
+  ### Header obligatoire : `Idempotency-Key`
+  - Valeur : UUIDv4 généré par le client (Bruno génère automatiquement `{{$randomUUID}}`)
+  - Même clé renvoyée dans les 24h → réponse en cache (replay 200 au lieu de 201)
+  - Protection contre les doubles soumissions
+
+  **Corps** :
+  | Champ      | Requis | Contraintes        |
+  |------------|--------|--------------------|
+  | activityId | ✅      | UUID d'une activité publiée |
+  | seats      | ✅      | 1–50               |
+
+  **Réponse 201** (première fois) ou **200** (replay idempotent) :
+  ```json
+  {
+    "id": "uuid-booking",
+    "activityId": "uuid-activity",
+    "seats": 1,
+    "status": "CONFIRMED",
+    "createdAt": "2026-05-25T10:00:00Z",
+    "cancelledAt": null
+  }
+  ```
+
+  **Erreurs** :
+  - `400` → header `Idempotency-Key` absent
+  - `401` → token absent
+  - `409` → réservation en cours (même clé, requête parallèle)
+  - `422` → places insuffisantes | quota utilisateur dépassé (max 5) | activité non publiée
+}

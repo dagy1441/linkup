@@ -1,0 +1,56 @@
+meta {
+  name: GET My Bookings
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/v1/bookings/me
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+params:query {
+  ~status: CONFIRMED
+  ~page: 0
+  ~size: 10
+}
+
+docs {
+  ## GET /api/v1/bookings/me
+
+  Liste les réservations de l'utilisateur authentifié (paginées).
+  **Authentification requise**.
+
+  **Query params optionnels** :
+  | Param  | Valeurs possibles              | Description        |
+  |--------|--------------------------------|--------------------|
+  | status | `CONFIRMED` \| `CANCELLED`     | Filtre par statut  |
+  | page   | int (défaut: 0)                | Numéro de page     |
+  | size   | int (défaut: 10, max: 50)      | Taille de page     |
+
+  **Réponse 200** :
+  ```json
+  {
+    "content": [
+      {
+        "id": "uuid",
+        "activityId": "uuid",
+        "seats": 1,
+        "status": "CONFIRMED",
+        "createdAt": "2026-05-25T10:00:00Z",
+        "cancelledAt": null
+      }
+    ],
+    "page": 0,
+    "size": 10,
+    "totalElements": 1,
+    "totalPages": 1,
+    "last": true
+  }
+  ```
+}

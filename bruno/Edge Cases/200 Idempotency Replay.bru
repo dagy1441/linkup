@@ -1,0 +1,43 @@
+meta {
+  name: 200 Idempotency Replay
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/v1/bookings
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  Content-Type: application/json
+  Idempotency-Key: replay-test-key-fixed-001
+}
+
+body:json {
+  {
+    "activityId": "{{activityId}}",
+    "seats": 1
+  }
+}
+
+docs {
+  ## Test Replay — Idempotency (même clé fixe)
+
+  Cette requête utilise une **clé fixe** `replay-test-key-fixed-001`.
+
+  **Scénario** :
+  1. Exécuter une première fois → `201 Created` + booking créé
+  2. Exécuter une deuxième fois avec la **même clé** → `200 OK` + **même réponse en cache**
+     (aucune nouvelle réservation créée, aucune place décomptée)
+
+  C'est le comportement idempotent : les clients peuvent renvoyer la même
+  requête en cas de timeout réseau sans risquer un double booking.
+
+  ⚠️ Changer la clé si tu veux tester un vrai nouveau booking.
+}

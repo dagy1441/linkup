@@ -1,0 +1,42 @@
+meta {
+  name: GET Activity by ID
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/v1/activities/{{activityId}}
+  body: none
+  auth: none
+}
+
+docs {
+  ## GET /api/v1/activities/:id
+
+  Retourne une activité par son UUID.
+  Endpoint public — aucun token requis.
+
+  **Path param** : `activityId` → variable d'environnement (stockée par "POST Create Activity").
+
+  **Réponse 200** :
+  ```json
+  {
+    "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "title": "Yoga au Plateau",
+    "description": "Séance de yoga en plein air",
+    "city": "Abidjan",
+    "addressLine": "Plateau, Avenue Botreau-Roussel",
+    "latitude": 5.3211,
+    "longitude": -4.0214,
+    "startsAt": "2026-08-01T08:00:00Z",
+    "capacity": 30,
+    "bookedCount": 2,
+    "remainingSeats": 28,
+    "organizerDisplayName": "Alice",
+    "status": "PUBLISHED"
+  }
+  ```
+
+  **Erreurs** :
+  - `404` → activité introuvable
+}

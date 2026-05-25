@@ -1,0 +1,36 @@
+meta {
+  name: GET Me
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v1/auth/me
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+docs {
+  ## GET /api/v1/auth/me
+
+  Retourne le profil local de l'utilisateur authentifié (auto-provisionné à la première connexion).
+
+  **Réponse 200** :
+  ```json
+  {
+    "id": "uuid-local",
+    "keycloakId": "uuid-keycloak",
+    "email": "alice@linkup.io",
+    "displayName": "Alice",
+    "status": "ACTIVE",
+    "roles": ["organizer", "user"]
+  }
+  ```
+
+  **Erreurs** :
+  - `401` → token absent ou expiré
+}
