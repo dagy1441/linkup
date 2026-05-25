@@ -40,6 +40,14 @@ linkup:
   security:
     jwt:
       role-claim: realm_access.roles
+    cors:
+      # Dev default = any localhost port (handled by CorsProperties record).
+      # Prod MUST set the env var:
+      #   LINKUP_SECURITY_CORS_ALLOWED_ORIGINS=https://app.linkup.io,https://m.linkup.io
+      # When the var is unset, Spring binds an empty list and the record falls back
+      # to the localhost defaults (safe for dev, never deploy that to prod).
+      allow-credentials: true
+      max-age: 3600
 
   booking:
     max-items-per-user: 5
