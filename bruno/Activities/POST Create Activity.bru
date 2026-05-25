@@ -1,0 +1,66 @@
+meta {
+  name: POST Create Activity
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/v1/activities
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "title": "Yoga au Plateau",
+    "description": "Séance de yoga en plein air face à la lagune. Tapis fourni.",
+    "city": "Abidjan",
+    "addressLine": "Plateau, Avenue Botreau-Roussel",
+    "latitude": 5.3211,
+    "longitude": -4.0214,
+    "startsAt": "2026-08-01T08:00:00Z",
+    "capacity": 30
+  }
+}
+
+script:post-response {
+  const data = res.getBody();
+  if (res.getStatus() === 201 && data && data.id) {
+    bru.setEnvVar("activityId", data.id);
+    console.log("activityId enregistré : " + data.id);
+  }
+}
+
+docs {
+  ## POST /api/v1/activities
+  
+  Crée une nouvelle activité.
+  **Rôle requis : `ORGANIZER`** → utiliser le token Alice.
+  
+  L'`activityId` de la réponse est automatiquement stocké dans l'environnement.
+  
+  **Champs** :
+  | Champ       | Requis | Contraintes                    |
+  |-------------|--------|--------------------------------|
+  | title       | ✅      | max 150 chars                  |
+  | description |        | max 4000 chars                 |
+  | city        | ✅      | max 100 chars                  |
+  | addressLine |        | max 250 chars                  |
+  | latitude    |        | double                         |
+  | longitude   |        | double                         |
+  | startsAt    | ✅      | ISO-8601, doit être dans le futur |
+  | capacity    | ✅      | entier > 0                     |
+  
+  **Erreurs** :
+  - `401` → token absent ou expiré
+  - `403` → rôle ORGANIZER manquant (ex: token Bob)
+  - `422` → validation échouée (titre vide, date passée, etc.)
+}

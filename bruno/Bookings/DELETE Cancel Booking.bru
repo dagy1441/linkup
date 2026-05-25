@@ -1,0 +1,50 @@
+meta {
+  name: DELETE Cancel Booking
+  type: http
+  seq: 4
+}
+
+delete {
+  url: {{baseUrl}}/api/v1/bookings/{{bookingId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  Idempotency-Key: {{idempotencyKey}}
+}
+
+vars:pre-request {
+  idempotencyKey: {{$randomUUID}}
+}
+
+docs {
+  ## DELETE /api/v1/bookings/:id
+
+  Annule une réservation (passe son statut à `CANCELLED`).
+  **Authentification requise** + la réservation doit appartenir à l'utilisateur.
+
+  ### Header obligatoire : `Idempotency-Key`
+  Même comportement que le POST : les appels répétés dans les 24h retournent
+  la même réponse en cache (protection contre les doubles annulations).
+
+  **Réponse 200** :
+  ```json
+  {
+    "id": "uuid",
+    "status": "CANCELLED",
+    "cancelledAt": "2026-05-25T11:00:00Z",
+    ...
+  }
+  ```
+
+  **Erreurs** :
+  - `400` → header `Idempotency-Key` absent
+  - `401` → token absent
+  - `404` → booking introuvable ou n'appartient pas à l'utilisateur
+  - `422` → booking déjà annulé
+}

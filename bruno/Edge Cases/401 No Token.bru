@@ -1,0 +1,22 @@
+meta {
+  name: 401 No Token
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/v1/auth/me
+  body: none
+  auth: none
+}
+
+docs {
+  ## Test 401 — Requête sans token
+
+  Appel à un endpoint protégé sans header `Authorization`.
+
+  **Résultat attendu** : `401 Unauthorized`
+
+  Vérifie que la chaîne de sécurité Spring Security / Keycloak fonctionne
+  et que les endpoints protégés ne sont pas accessibles sans JWT valide.
+}

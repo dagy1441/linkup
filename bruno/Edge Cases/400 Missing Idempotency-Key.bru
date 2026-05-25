@@ -1,0 +1,42 @@
+meta {
+  name: 400 Missing Idempotency-Key
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/bookings
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "activityId": "{{activityId}}",
+    "seats": 1
+  }
+}
+
+docs {
+  ## Test 400 — Booking sans header Idempotency-Key
+
+  Le header `Idempotency-Key` est **obligatoire** sur POST et DELETE /bookings.
+  Cette requête l'omet volontairement.
+
+  **Résultat attendu** : `400 Bad Request`
+  ```json
+  {
+    "status": 400,
+    "error": "MISSING_REQUEST_HEADER",
+    "message": "Required request header 'Idempotency-Key' is not present"
+  }
+  ```
+}

@@ -1,0 +1,45 @@
+meta {
+  name: 422 Booking Seats Exceeded
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/v1/bookings
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  Content-Type: application/json
+  Idempotency-Key: {{$randomUUID}}
+}
+
+body:json {
+  {
+    "activityId": "{{activityId}}",
+    "seats": 9999
+  }
+}
+
+docs {
+  ## Test 422 — Réservation avec trop de places
+
+  Tente de réserver 9999 places (largement au-dessus de la capacité).
+
+  **Résultat attendu** : `422 Unprocessable Entity`
+  ```json
+  {
+    "status": 422,
+    "error": "INSUFFICIENT_SEATS",
+    "message": "Not enough available seats"
+  }
+  ```
+
+  Vérifie la protection contre la sur-réservation atomique
+  (`UPDATE ... WHERE booked_count + :qty <= capacity`).
+}

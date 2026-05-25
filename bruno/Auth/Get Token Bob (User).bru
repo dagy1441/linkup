@@ -1,0 +1,38 @@
+meta {
+  name: Get Token Bob (User)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{keycloakUrl}}/realms/{{realm}}/protocol/openid-connect/token
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  grant_type: password
+  client_id: {{clientId}}
+  username: bob@linkup.io
+  password: bob123
+}
+
+script:post-response {
+  const data = res.getBody();
+  if (data && data.access_token) {
+    bru.setEnvVar("token", data.access_token);
+    console.log("Token Bob enregistré (expires_in=" + data.expires_in + "s)");
+  }
+}
+
+docs {
+  ## Get Token — Bob (User only)
+
+  Récupère un JWT Keycloak pour `bob@linkup.io`.
+  Bob a uniquement le rôle **user** → il peut réserver mais PAS créer d'activités.
+
+  Utile pour tester les guards `@PreAuthorize("hasRole('ORGANIZER')")` :
+  Bob doit recevoir **403 Forbidden** sur POST/PUT/DELETE `/activities`.
+
+  **Credentials seed** : `bob@linkup.io / bob123`
+}

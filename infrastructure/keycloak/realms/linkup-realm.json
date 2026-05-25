@@ -59,6 +59,7 @@
         "access.token.lifespan": "1800"
       },
       "defaultClientScopes": [
+        "basic",
         "web-origins",
         "acr",
         "profile",
@@ -99,6 +100,22 @@
         }
       ],
       "realmRoles": ["user"]
+    },
+    {
+      "username": "admin@linkup.io",
+      "email": "admin@linkup.io",
+      "firstName": "Dagnogo",
+      "lastName": "Yaya",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["admin"]
     }
   ]
 }

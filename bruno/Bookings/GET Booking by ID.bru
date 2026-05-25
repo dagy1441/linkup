@@ -1,0 +1,40 @@
+meta {
+  name: GET Booking by ID
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v1/bookings/{{bookingId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+docs {
+  ## GET /api/v1/bookings/:id
+
+  Retourne une réservation par son UUID.
+  **Authentification requise** + la réservation doit appartenir à l'utilisateur.
+
+  Le `bookingId` est stocké automatiquement lors du "POST Create Booking".
+
+  **Réponse 200** :
+  ```json
+  {
+    "id": "uuid",
+    "activityId": "uuid",
+    "seats": 1,
+    "status": "CONFIRMED",
+    "createdAt": "2026-05-25T10:00:00Z",
+    "cancelledAt": null
+  }
+  ```
+
+  **Erreurs** :
+  - `401` → token absent
+  - `404` → booking introuvable ou appartient à un autre utilisateur
+}

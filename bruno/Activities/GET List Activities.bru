@@ -1,0 +1,46 @@
+meta {
+  name: GET List Activities
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/activities
+  body: none
+  auth: none
+}
+
+params:query {
+  ~city: Abidjan
+  ~page: 0
+  ~size: 20
+}
+
+docs {
+  ## GET /api/v1/activities
+
+  Liste les activités **publiées et à venir**, paginées.
+  Endpoint public — aucun token requis.
+
+  **Query params optionnels** :
+  | Param | Type   | Description                        |
+  |-------|--------|------------------------------------|
+  | city  | string | Filtre par ville (ex: `Abidjan`)   |
+  | page  | int    | Numéro de page (défaut: 0)         |
+  | size  | int    | Taille de page (défaut: 20, max: 100) |
+
+  **Réponse 200** :
+  ```json
+  {
+    "content": [ { "id": "...", "title": "...", ... } ],
+    "page": 0,
+    "size": 20,
+    "totalElements": 5,
+    "totalPages": 1,
+    "last": true
+  }
+  ```
+
+  > Les paramètres préfixés `~` sont désactivés par défaut dans Bruno.
+  > Supprime le `~` pour les activer.
+}
