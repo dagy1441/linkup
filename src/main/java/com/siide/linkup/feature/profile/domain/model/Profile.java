@@ -2,18 +2,27 @@ package com.siide.linkup.feature.profile.domain.model;
 
 import com.siide.linkup.core.audit.Auditable;
 import com.siide.linkup.feature.profile.domain.exception.ProfileInvalidStateException;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Period;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -75,6 +84,24 @@ public class Profile extends Auditable {
     @Column(name = "deletion_scheduled_at")
     private Instant deletionScheduledAt;
 
+    /**
+     * Slugs of {@link Interest}s the user picked. Stored in the {@code profile_interests}
+     * join table and validated against the catalogue at the application layer. EAGER
+     * because the set is small (cap {@link #MAX_INTERESTS}) and used by every read.
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+            name = "profile_interests",
+            joinColumns = @JoinColumn(name = "profile_id", nullable = false)
+    )
+    @Column(name = "interest_slug", nullable = false, length = 50)
+    private Set<String> interestSlugs = new LinkedHashSet<>();
+
+    /** Max interests a user can pick. Keeps the chip UI usable + the join row count small. */
+    public static final int MAX_INTERESTS = 10;
+    /** Min interests required for {@link #isComplete()} (US-005 onboarding). */
+    public static final int MIN_INTERESTS_FOR_COMPLETENESS = 1;
+
     protected Profile() {
         // JPA
     }
@@ -107,11 +134,27 @@ public class Profile extends Auditable {
         this.gender = gender;
     }
 
+    /**
+     * Replace the user's interests with the given (catalogue-validated) slugs.
+     * Callers must filter the input against {@link com.siide.linkup.feature.profile.domain.InterestCatalog}
+     * BEFORE invoking this method — the aggregate trusts the slugs it receives.
+     */
+    public void replaceInterests(Collection<String> validatedSlugs) {
+        requireMutable();
+        Objects.requireNonNull(validatedSlugs, "validatedSlugs");
+        if (validatedSlugs.size() > MAX_INTERESTS) {
+            throw new IllegalArgumentException("at most " + MAX_INTERESTS + " interests allowed");
+        }
+        this.interestSlugs.clear();
+        this.interestSlugs.addAll(new LinkedHashSet<>(validatedSlugs));
+    }
+
     /** Whether all "required for completeness" fields are filled. Drives ProfileCompletedEvent. */
     public boolean isComplete() {
         return bio != null && !bio.isBlank()
                 && city != null && !city.isBlank()
-                && dateOfBirth != null;
+                && dateOfBirth != null
+                && interestSlugs.size() >= MIN_INTERESTS_FOR_COMPLETENESS;
     }
 
     /** Marker for the soft-delete flow (PR #8). Made package-private until then to avoid premature use. */
@@ -195,6 +238,10 @@ public class Profile extends Auditable {
     public String getPhotoKey() { return photoKey; }
     public ProfileStatus getStatus() { return status; }
     public Instant getDeletionScheduledAt() { return deletionScheduledAt; }
+    /** Defensive copy — the aggregate owns the set, callers may not mutate it directly. */
+    public Set<String> getInterestSlugs() {
+        return Collections.unmodifiableSet(new LinkedHashSet<>(interestSlugs));
+    }
 
     @Override
     public boolean equals(Object o) {

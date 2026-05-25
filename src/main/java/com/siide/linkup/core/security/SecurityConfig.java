@@ -43,6 +43,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // Public reads on activities
                         .requestMatchers(HttpMethod.GET, "/api/v1/activities", "/api/v1/activities/**").permitAll()
+                        // Public interests catalogue (needed before login to render the onboarding picker)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/interests", "/api/v1/interests/**").permitAll()
                         // Everything else requires JWT
                         .anyRequest().authenticated()
                 )

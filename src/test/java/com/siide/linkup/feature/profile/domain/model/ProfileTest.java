@@ -71,12 +71,38 @@ class ProfileTest {
     }
 
     @Test
-    void profile_is_complete_when_bio_city_and_dob_set() {
+    void profile_is_complete_only_when_bio_city_dob_and_at_least_one_interest_set() {
         Profile p = Profile.empty(userId);
 
         p.update("Hi", "Abidjan", LocalDate.of(1995, 1, 1), Gender.UNDISCLOSED, now);
+        // Without interests, isComplete remains false (US-005 enforces ≥1 pick).
+        assertThat(p.isComplete()).isFalse();
 
+        p.replaceInterests(java.util.Set.of("yoga"));
         assertThat(p.isComplete()).isTrue();
+    }
+
+    @Test
+    void replace_interests_rejects_more_than_max() {
+        Profile p = Profile.empty(userId);
+        java.util.Set<String> tooMany = new java.util.LinkedHashSet<>();
+        for (int i = 0; i < Profile.MAX_INTERESTS + 1; i++) {
+            tooMany.add("s" + i);
+        }
+
+        assertThatThrownBy(() -> p.replaceInterests(tooMany))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(String.valueOf(Profile.MAX_INTERESTS));
+    }
+
+    @Test
+    void replace_interests_clears_existing_when_given_empty_set() {
+        Profile p = Profile.empty(userId);
+        p.replaceInterests(java.util.Set.of("yoga", "foot"));
+
+        p.replaceInterests(java.util.Set.of());
+
+        assertThat(p.getInterestSlugs()).isEmpty();
     }
 
     @Test
