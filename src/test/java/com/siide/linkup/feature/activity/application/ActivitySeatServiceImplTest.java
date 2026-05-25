@@ -1,6 +1,7 @@
 package com.siide.linkup.feature.activity.application;
 
 import com.siide.linkup.feature.activity.domain.ActivityRepository;
+import com.siide.linkup.feature.activity.domain.exception.SeatReleaseFailedException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -46,9 +47,19 @@ class ActivitySeatServiceImplTest {
     }
 
     @Test
-    void release_does_not_throw_when_no_row_affected() {
+    void release_throws_when_no_row_affected_so_caller_rolls_back() {
         UUID id = UUID.randomUUID();
         when(repository.releaseSeatsAtomic(id, 2)).thenReturn(0);
+
+        // Activity missing OR booked_count < qty → refuse to leave seats stuck.
+        assertThatThrownBy(() -> service.releaseSeats(id, 2))
+                .isInstanceOf(SeatReleaseFailedException.class);
+    }
+
+    @Test
+    void release_succeeds_when_row_affected() {
+        UUID id = UUID.randomUUID();
+        when(repository.releaseSeatsAtomic(id, 2)).thenReturn(1);
 
         service.releaseSeats(id, 2); // no exception
     }
