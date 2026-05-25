@@ -1,0 +1,41 @@
+meta {
+  name: 422 PUT oversized bio
+  type: http
+  seq: 3
+}
+
+put {
+  url: {{baseUrl}}/api/v1/profile/me
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "bio": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  }
+}
+
+docs {
+  ## Edge case — bio > 150 chars
+
+  Bean validation `@Size(max = 150)` rejette avec un **400 Bad Request**
+  (Spring `MethodArgumentNotValidException`) avant que le service ne soit appelé.
+
+  Résultat attendu :
+  ```json
+  {
+    "status": 400,
+    "error": "VALIDATION_FAILED",
+    "details": [ { "field": "bio", "message": "size must be between 0 and 150" } ]
+  }
+  ```
+}
