@@ -23,9 +23,12 @@ import java.util.UUID;
 @Table(
         name = "bookings",
         indexes = {
-                @Index(name = "ix_bookings_user_id", columnList = "user_id"),
-                @Index(name = "ix_bookings_activity_id", columnList = "activity_id"),
-                @Index(name = "ix_bookings_status", columnList = "status")
+                // Composite for listMine: WHERE user_id=? AND status=? ORDER BY created_at DESC
+                // (declared here so Hibernate's ddl-auto:update in dev keeps it in sync; the
+                //  authoritative DDL lives in Flyway V6).
+                @Index(name = "ix_bookings_user_status_created",
+                        columnList = "user_id, status, created_at DESC"),
+                @Index(name = "ix_bookings_activity_id", columnList = "activity_id")
         }
 )
 public class Booking extends Auditable {

@@ -18,10 +18,14 @@ public interface ActivitySeatService {
     boolean tryReserveSeats(UUID activityId, int qty);
 
     /**
-     * Release {@code qty} previously reserved seats. No-op if the activity has fewer
-     * booked seats than {@code qty} (defensive: never lets booked_count go negative).
+     * Release {@code qty} previously reserved seats. Throws if the activity is
+     * missing or has fewer booked seats than {@code qty} — the caller's transaction
+     * must roll back so the matching booking is not marked cancelled while seats
+     * stay stuck.
      *
      * @param qty number of seats to release, must be {@code > 0}
+     * @throws com.siide.linkup.feature.activity.domain.exception.SeatReleaseFailedException
+     *         when the UPDATE affects zero rows
      */
     void releaseSeats(UUID activityId, int qty);
 }

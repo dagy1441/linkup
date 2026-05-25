@@ -22,6 +22,7 @@ import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 
 /**
  * Replay-cache for mutating endpoints, persisted in {@code idempotency_keys}.
@@ -41,6 +42,9 @@ import java.util.function.Supplier;
 public class IdempotencyService {
 
     private static final Logger log = LoggerFactory.getLogger(IdempotencyService.class);
+    // Restrict to URL-safe + UUID-friendly charset. Blocks whitespace, unicode,
+    // control chars (which would corrupt log lines) and shell metacharacters.
+    private static final Pattern KEY_PATTERN = Pattern.compile("^[A-Za-z0-9_-]+$");
 
     private final IdempotencyKeyRepository repository;
     private final ObjectMapper objectMapper;
@@ -67,7 +71,12 @@ public class IdempotencyService {
                                          Class<T> responseType,
                                          Supplier<ResponseEntity<T>> handler) {
         validateKey(key);
-        String hash = sha256(serialize(requestBody));
+        String serialized = serialize(requestBody);
+        if (serialized.length() > properties.maxBodyBytes()) {
+            throw new IdempotencyKeyInvalidException(
+                    "request body exceeds " + properties.maxBodyBytes() + " bytes (got " + serialized.length() + ")");
+        }
+        String hash = sha256(serialized);
         Instant now = Instant.now(clock);
 
         Optional<IdempotencyKey> existing = repository.findByKeyAndUserIdAndEndpoint(key, userId, endpoint);
@@ -103,14 +112,27 @@ public class IdempotencyService {
             return replayCachedResponse(winner, responseType);
         }
 
+        ResponseEntity<T> response;
         try {
-            ResponseEntity<T> response = handler.get();
-            completeInNewTx(pending.getId(), response);
-            return response;
+            response = handler.get();
         } catch (RuntimeException businessError) {
+            // Handler failed — delete the pending row so a retry can re-attempt.
             deleteInNewTx(pending.getId());
             throw businessError;
         }
+        // Handler succeeded. Caching the response is best-effort: if the completion
+        // update fails (DB blip, deadlock), we intentionally KEEP the pending row.
+        // - The side effects of the handler are already committed.
+        // - Any retry with the same key will get 409 IN_PROGRESS until TTL expires.
+        // - The alternative (delete on cache failure) would let the caller replay
+        //   the request and cause a second execution — way worse than a 409.
+        try {
+            completeInNewTx(pending.getId(), response);
+        } catch (RuntimeException cacheError) {
+            log.error("Failed to cache idempotency response key={} endpoint={} — handler succeeded, "
+                    + "pending row retained to block retries until TTL", key, endpoint, cacheError);
+        }
+        return response;
     }
 
     private void validateKey(String key) {
@@ -119,6 +141,10 @@ public class IdempotencyService {
         }
         if (key.length() > properties.maxKeyLength()) {
             throw new IdempotencyKeyInvalidException("length exceeds " + properties.maxKeyLength());
+        }
+        if (!KEY_PATTERN.matcher(key).matches()) {
+            throw new IdempotencyKeyInvalidException(
+                    "must match " + KEY_PATTERN.pattern() + " (URL-safe characters only)");
         }
     }
 

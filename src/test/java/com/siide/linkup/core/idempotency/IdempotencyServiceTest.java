@@ -67,7 +67,7 @@ class IdempotencyServiceTest {
         };
         ObjectMapper mapper = new ObjectMapper();
         IdempotencyProperties props = new IdempotencyProperties("Idempotency-Key",
-                Duration.ofHours(24), 128, "0 0 3 * * *");
+                Duration.ofHours(24), 128, 64 * 1024, "0 0 3 * * *");
         service = new IdempotencyService(repository, mapper, props, inlineTx,
                 Clock.fixed(now, ZoneOffset.UTC));
     }
@@ -126,10 +126,33 @@ class IdempotencyServiceTest {
     }
 
     @Test
+    void execute_rejects_key_with_disallowed_chars() {
+        // Whitespace, unicode, shell metacharacters — anything outside [A-Za-z0-9_-]
+        for (String bad : new String[]{"abc 123", "abc;ls", "abc\nx", "abc/123"}) {
+            assertThatThrownBy(() -> service.execute(bad, userId, endpoint, body(1), String.class,
+                    () -> ResponseEntity.ok("nope")))
+                    .as("key=%s", bad)
+                    .isInstanceOf(IdempotencyKeyInvalidException.class);
+        }
+    }
+
+    @Test
     void execute_rejects_blank_key() {
         assertThatThrownBy(() -> service.execute(" ", userId, endpoint, body(1), String.class,
                 () -> ResponseEntity.ok("nope")))
                 .isInstanceOf(IdempotencyKeyInvalidException.class);
+    }
+
+    @Test
+    void execute_rejects_oversized_request_body() {
+        // Build a Jackson-serializable map whose JSON exceeds 64 KB.
+        String huge = "x".repeat(70 * 1024);
+        java.util.Map<String, String> body = java.util.Map.of("payload", huge);
+
+        assertThatThrownBy(() -> service.execute(key, userId, endpoint, body, String.class,
+                () -> ResponseEntity.ok("nope")))
+                .isInstanceOf(IdempotencyKeyInvalidException.class)
+                .hasMessageContaining("exceeds");
     }
 
     @Test
@@ -149,6 +172,26 @@ class IdempotencyServiceTest {
                 .isInstanceOf(IllegalStateException.class);
 
         verify(repository).deleteById(any(UUID.class));
+    }
+
+    @Test
+    void execute_keeps_pending_row_when_completion_update_fails_so_retry_returns_in_progress() {
+        // First call: handler succeeds, but the completion update throws. The pending
+        // row must NOT be deleted — otherwise a retry with the same key would
+        // re-execute the handler (double booking).
+        when(repository.findByKeyAndUserIdAndEndpoint(key, userId, endpoint))
+                .thenReturn(Optional.empty());
+        when(repository.findById(any(UUID.class)))
+                .thenThrow(new org.springframework.dao.DataAccessResourceFailureException("db down"));
+
+        ResponseEntity<String> response = service.execute(key, userId, endpoint, body(1), String.class,
+                () -> ResponseEntity.status(HttpStatus.CREATED).body("ok"));
+
+        // Handler ran and the client gets the success response — caching is best-effort.
+        assertThat(response.getStatusCode().value()).isEqualTo(201);
+        assertThat(response.getBody()).isEqualTo("ok");
+        // The pending row was NOT deleted (the row will live until TTL and block retries).
+        verify(repository, never()).deleteById(any(UUID.class));
     }
 
     @Test

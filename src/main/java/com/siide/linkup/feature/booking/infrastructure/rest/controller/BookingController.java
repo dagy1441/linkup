@@ -31,7 +31,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -101,8 +100,10 @@ public class BookingController {
             @RequestHeader("Idempotency-Key") String idempotencyKey,
             @PathVariable UUID id) {
         UUID userId = currentUserAccessor.requireCurrentUserId();
+        // The booking id already lives inside the endpoint key, so the body adds nothing
+        // to the idempotency hash. Pass null and let serialize() use "null".
         String endpoint = CANCEL_ENDPOINT.replace("{id}", id.toString());
-        return idempotencyService.execute(idempotencyKey, userId, endpoint, Map.of("id", id), BookingResponse.class, () -> {
+        return idempotencyService.execute(idempotencyKey, userId, endpoint, null, BookingResponse.class, () -> {
             Booking cancelled = commandService.cancel(id, userId);
             return ResponseEntity.ok(BookingResponse.from(cancelled));
         });

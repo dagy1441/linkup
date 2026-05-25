@@ -26,8 +26,9 @@ import java.util.UUID;
         name = "activities",
         indexes = {
                 @Index(name = "ix_activities_status_starts_at", columnList = "status, starts_at"),
-                @Index(name = "ix_activities_organizer_id", columnList = "organizer_id"),
-                @Index(name = "ix_activities_city", columnList = "city")
+                @Index(name = "ix_activities_organizer_id", columnList = "organizer_id")
+                // ix_activities_city_lower is a functional index (LOWER(city)) — JPA can't
+                // express it; lives in Flyway V6 only.
         }
 )
 public class Activity extends Auditable {
