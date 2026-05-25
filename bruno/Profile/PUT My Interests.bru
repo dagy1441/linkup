@@ -1,0 +1,51 @@
+meta {
+  name: PUT My Interests
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/v1/profile/me/interests
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "slugs": ["yoga", "cuisine", "musique"]
+  }
+}
+
+docs {
+  ## PUT /api/v1/profile/me/interests
+
+  Remplace **complètement** la liste des intérêts de l'utilisateur.
+  Set vide `{ "slugs": [] }` = efface toutes les sélections.
+
+  Les slugs inconnus ou désactivés sont **silencieusement ignorés**
+  (compare la taille de la réponse `interests` à celle envoyée pour détecter).
+
+  **Contraintes** :
+  | Champ | Règle                                |
+  |-------|--------------------------------------|
+  | slugs | max 10 entries (Profile.MAX_INTERESTS) |
+
+  **Effet sur `complete`** : si bio + city + DOB sont déjà set et qu'on
+  ajoute ≥ 1 interest, `ProfileCompletedEvent` est émis (consommé par
+  notification welcome en Sprint S2).
+
+  **Réponse 200** : profil complet avec la nouvelle liste `interests`.
+
+  **Erreurs** :
+  - `400` → > 10 slugs (Bean validation)
+  - `401` → token absent
+  - `422` → profil en `DELETION_PENDING`
+}
