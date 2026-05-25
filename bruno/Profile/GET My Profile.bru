@@ -1,0 +1,53 @@
+meta {
+  name: GET My Profile
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/profile/me
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+script:post-response {
+  const data = res.getBody();
+  if (res.getStatus() === 200 && data && data.id) {
+    bru.setEnvVar("profileId", data.id);
+    console.log("profileId enregistré : " + data.id + " (complete=" + data.complete + ")");
+  }
+}
+
+docs {
+  ## GET /api/v1/profile/me
+
+  Retourne le profil de l'utilisateur authentifié. **Auto-provisionne** un
+  profil vide au premier appel (mirroir du flow auth `GET /me`).
+
+  **Réponse 200** :
+  ```json
+  {
+    "id": "uuid-profile",
+    "userId": "uuid-user",
+    "bio": null,
+    "city": null,
+    "dateOfBirth": null,
+    "gender": null,
+    "photoKey": null,
+    "complete": false,
+    "status": "ACTIVE",
+    "deletionScheduledAt": null
+  }
+  ```
+
+  Après quelques `PUT /me` avec bio + city + DOB, `complete: true`
+  et l'event `ProfileCompletedEvent` est émis (consommé par Notification
+  en Sprint S2).
+
+  **Erreurs** :
+  - `401` → token absent ou expiré
+}

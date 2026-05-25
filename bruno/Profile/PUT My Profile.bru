@@ -1,0 +1,51 @@
+meta {
+  name: PUT My Profile
+  type: http
+  seq: 2
+}
+
+put {
+  url: {{baseUrl}}/api/v1/profile/me
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "bio": "Passionné de yoga et de cuisine ivoirienne 🌴",
+    "city": "Abidjan",
+    "dateOfBirth": "1995-06-15",
+    "gender": "MALE"
+  }
+}
+
+docs {
+  ## PUT /api/v1/profile/me
+
+  Met à jour les champs éditables du profil.
+  La première fois où **bio + city + dateOfBirth** sont tous renseignés,
+  `ProfileCompletedEvent` est émis (consommé par notification/recommendation).
+
+  **Champs (tous optionnels)** :
+  | Champ        | Contraintes                              |
+  |--------------|------------------------------------------|
+  | bio          | max 150 chars, trim, blanc → null        |
+  | city         | max 100 chars, trim, blanc → null        |
+  | dateOfBirth  | ISO date, dans le passé, âge ≥ 13 ans    |
+  | gender       | enum: MALE, FEMALE, OTHER, UNDISCLOSED   |
+
+  **Réponse 200** : profil mis à jour avec `complete: true|false`.
+
+  **Erreurs** :
+  - `400` → validation Bean (oversized, future date, etc.)
+  - `401` → token absent
+  - `422` → profil en `DELETION_PENDING` (use POST /me/restore avant)
+}
