@@ -4,22 +4,30 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.siide.linkup.feature.auth.api.CurrentUserAccessor;
 import com.siide.linkup.feature.profile.application.ProfileCommandService;
+import com.siide.linkup.feature.profile.application.ProfileStorageProperties;
 import com.siide.linkup.feature.profile.application.dto.UpdateProfileCommand;
 import com.siide.linkup.feature.profile.domain.model.Gender;
 import com.siide.linkup.feature.profile.domain.model.Profile;
+import com.siide.linkup.feature.profile.domain.storage.PhotoStorageService;
 import com.siide.linkup.feature.profile.infrastructure.rest.dto.ProfileRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration;
 import org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration;
 import org.springframework.boot.security.oauth2.server.resource.autoconfigure.servlet.OAuth2ResourceServerAutoConfiguration;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.time.Duration;
+import java.util.List;
 
 import java.time.LocalDate;
 import java.util.UUID;
@@ -27,7 +35,11 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import org.springframework.mock.web.MockMultipartFile;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -45,7 +57,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         )
 )
 @AutoConfigureMockMvc(addFilters = false)
+@Import(ProfileControllerTest.StoragePropsConfig.class)
 class ProfileControllerTest {
+
+    /**
+     * Records can't be {@code @MockitoBean}'d cleanly (deep chains return null),
+     * so provide a real instance. Tests only need the TTL on the way out.
+     */
+    @TestConfiguration
+    static class StoragePropsConfig {
+        @Bean
+        ProfileStorageProperties profileStorageProperties() {
+            return new ProfileStorageProperties(
+                    1_048_576L,
+                    List.of("image/jpeg", "image/png", "image/webp"),
+                    new ProfileStorageProperties.Storage(
+                            "http://localhost:9000", "ak", "sk", "linkup-profiles",
+                            Duration.ofHours(1)));
+        }
+    }
+
 
     private static final ObjectMapper MAPPER = new ObjectMapper().registerModule(new JavaTimeModule());
 
@@ -53,6 +84,7 @@ class ProfileControllerTest {
 
     @MockitoBean ProfileCommandService commandService;
     @MockitoBean CurrentUserAccessor currentUserAccessor;
+    @MockitoBean PhotoStorageService photoStorage;
 
     private final UUID userId = UUID.randomUUID();
 
@@ -122,6 +154,36 @@ class ProfileControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(MAPPER.writeValueAsString(body)))
                 .andExpect(status().is4xxClientError());
+    }
+
+    @Test
+    void post_me_photo_uploads_and_returns_presigned_url() throws Exception {
+        when(currentUserAccessor.requireCurrentUserId()).thenReturn(userId);
+        Profile updated = Profile.empty(userId);
+        updated.attachPhoto("profiles/" + updated.getId() + "/avatar.jpg");
+        when(commandService.uploadPhoto(eq(userId), eq("image/jpeg"), org.mockito.ArgumentMatchers.anyLong(), any()))
+                .thenReturn(updated);
+        when(photoStorage.presignedUrl(any(), any())).thenReturn("https://minio.local/signed-url");
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "avatar.jpg", "image/jpeg", new byte[] {1, 2, 3, 4});
+
+        mockMvc.perform(multipart("/api/v1/profile/me/photo").file(file))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.photoKey").exists())
+                .andExpect(jsonPath("$.photoUrl").value("https://minio.local/signed-url"));
+    }
+
+    @Test
+    void delete_me_photo_clears_photo() throws Exception {
+        when(currentUserAccessor.requireCurrentUserId()).thenReturn(userId);
+        Profile cleared = Profile.empty(userId);
+        when(commandService.removePhoto(userId)).thenReturn(cleared);
+
+        mockMvc.perform(delete("/api/v1/profile/me/photo"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.photoKey").doesNotExist())
+                .andExpect(jsonPath("$.photoUrl").doesNotExist());
     }
 
     @Test

@@ -79,20 +79,22 @@ if (-not $SkipInfra) {
     }
     if ($LASTEXITCODE -ne 0) { Die "docker compose up failed" }
 
-    Write-Step "Waiting for postgres + keycloak healthchecks (max 180s)"
+    Write-Step "Waiting for postgres + keycloak + minio healthchecks (max 180s)"
     $deadline = (Get-Date).AddSeconds(180)
     $ready = $false
     while ((Get-Date) -lt $deadline) {
         $pgId = (docker compose ps -q postgres) 2>$null
         $kcId = (docker compose ps -q keycloak) 2>$null
-        if ($pgId -and $kcId) {
+        $mnId = (docker compose ps -q minio) 2>$null
+        if ($pgId -and $kcId -and $mnId) {
             $pg = docker inspect --format '{{.State.Health.Status}}' $pgId 2>$null
             $kc = docker inspect --format '{{.State.Health.Status}}' $kcId 2>$null
-            if ($pg -eq "healthy" -and $kc -eq "healthy") {
+            $mn = docker inspect --format '{{.State.Health.Status}}' $mnId 2>$null
+            if ($pg -eq "healthy" -and $kc -eq "healthy" -and $mn -eq "healthy") {
                 $ready = $true
                 break
             }
-            Write-Host ("   postgres={0}  keycloak={1}" -f $pg, $kc) -ForegroundColor DarkGray
+            Write-Host ("   postgres={0}  keycloak={1}  minio={2}" -f $pg, $kc, $mn) -ForegroundColor DarkGray
         } else {
             Write-Host "   waiting for containers..." -ForegroundColor DarkGray
         }

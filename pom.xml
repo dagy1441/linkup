@@ -204,6 +204,26 @@
             <artifactId>testcontainers-postgresql</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- AWS S3 SDK v2 — talks to MinIO in dev, AWS S3 (or any S3-compatible) in prod. -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>2.31.40</version>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>url-connection-client</artifactId>
+            <version>2.31.40</version>
+        </dependency>
+
+        <!-- Testcontainers MinIO module for the storage IT (real S3 interaction). -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-minio</artifactId>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
     <dependencyManagement>
         <dependencies>

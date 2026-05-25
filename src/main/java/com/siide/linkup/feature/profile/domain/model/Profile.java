@@ -173,12 +173,14 @@ public class Profile extends Auditable {
         this.deletionScheduledAt = null;
     }
 
-    void attachPhoto(String photoKey) {
+    /** Attach the storage key returned by {@code PhotoStorageService.upload}. Public for the command service. */
+    public void attachPhoto(String photoKey) {
         requireMutable();
         this.photoKey = photoKey;
     }
 
-    void clearPhoto() {
+    /** Detach the current photo. Caller is responsible for asking the storage to delete the bytes. */
+    public void clearPhoto() {
         requireMutable();
         this.photoKey = null;
     }
