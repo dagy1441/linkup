@@ -1,0 +1,43 @@
+meta {
+  name: DELETE My Account
+  type: http
+  seq: 7
+}
+
+delete {
+  url: {{baseUrl}}/api/v1/profile/me
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+docs {
+  ## DELETE /api/v1/profile/me — request account deletion (US-012)
+
+  Marque le profil `DELETION_PENDING` et fixe la date du hard-purge à
+  **maintenant + 30 jours** (`linkup.profile.lifecycle.deletion-grace-period`).
+
+  Pendant la grace period :
+  - Le profil reste visible via `GET /me` (avec `status: DELETION_PENDING` et `deletionScheduledAt`)
+  - **Toutes les mutations sont refusées** (PUT /me, PUT /me/interests, POST /me/photo, DELETE /me/photo)
+  - L'utilisateur peut annuler via **POST /me/restore**
+
+  Après le grace period :
+  - Le scheduler `ProfileDeletionScheduler` (4h00 UTC daily) émet `ProfilePurgedEvent`
+  - Le profil + interests + photo MinIO sont supprimés définitivement
+
+  **Réponse 200** :
+  ```json
+  {
+    "status": "DELETION_PENDING",
+    "deletionScheduledAt": "2026-06-25T22:55:00Z"
+  }
+  ```
+
+  **Erreurs** :
+  - `401` → token absent
+  - `422` → profil déjà en DELETION_PENDING (idempotent côté UX — affiche juste la date)
+}

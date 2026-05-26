@@ -79,6 +79,9 @@ linkup:
       - image/jpeg
       - image/png
       - image/webp
+    lifecycle:
+      deletion-grace-period: P30D                          # GDPR-friendly; US-012
+      purge-cron: "0 0 4 * * *"                            # 04:00 UTC daily
     storage:
       endpoint: ${LINKUP_PROFILE_STORAGE_ENDPOINT:http://localhost:9000}
       access-key: ${LINKUP_PROFILE_STORAGE_ACCESS_KEY:${MINIO_ROOT_USER:minioadmin}}

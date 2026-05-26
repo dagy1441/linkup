@@ -104,6 +104,24 @@ public class ProfileController {
         return ResponseEntity.ok(toResponse(updated));
     }
 
+    @DeleteMapping("/me")
+    @Operation(summary = "Request account deletion. Soft-deletes the profile; a daily scheduler hard-purges after 30 days.")
+    public ResponseEntity<ProfileResponse> requestDeletion() {
+        UUID userId = currentUserAccessor.requireCurrentUserId();
+        Profile updated = commandService.requestDeletion(userId);
+        log.info("DELETE /profile/me userId={} purgeAt={}", userId, updated.getDeletionScheduledAt());
+        return ResponseEntity.ok(toResponse(updated));
+    }
+
+    @PostMapping("/me/restore")
+    @Operation(summary = "Cancel a pending deletion. Only works during the grace period.")
+    public ResponseEntity<ProfileResponse> restoreDeletion() {
+        UUID userId = currentUserAccessor.requireCurrentUserId();
+        Profile updated = commandService.restoreFromDeletion(userId);
+        log.info("POST /profile/me/restore userId={}", userId);
+        return ResponseEntity.ok(toResponse(updated));
+    }
+
     /** Resolve the photo key to a time-limited presigned URL on the way out. */
     private ProfileResponse toResponse(Profile profile) {
         String url = photoStorage.presignedUrl(profile.getPhotoKey(),
