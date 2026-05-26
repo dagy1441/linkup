@@ -123,7 +123,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Ok ("DB reachable as '{0}'" -f $dbUser)
 
-# 6. Sanity-check port 8080 — a previous Ctrl+C often leaves the JVM hanging.
+# 6. Sanity-check port 8080 -- a previous Ctrl+C often leaves the JVM hanging.
 #    Failing fast here with a clean message beats Spring's wall-of-stack ten seconds later.
 Write-Step "Sanity-check: port 8080 is free"
 $listener = Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue
@@ -139,7 +139,7 @@ if ($listener) {
         $procIds | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
         Start-Sleep -Seconds 2
         if (Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue) {
-            Die "Port 8080 still in use after kill attempt — investigate manually."
+            Die "Port 8080 still in use after kill attempt -- investigate manually."
         }
         Write-Ok "Port 8080 freed"
     } else {
