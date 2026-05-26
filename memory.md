@@ -421,6 +421,180 @@ Pre-condition fixed: `git update-index --chmod=+x mvnw` (Windows checkout drops 
 
 ---
 
+## Sprint S1 — Profile module ✅
+
+**Status:** DONE — 5 PRs merged (#5, #6→#8, #9, #10, wrap-up).
+
+### Scope
+
+Closes the profile-side of MVP S1: identity stays in `feature.auth` (Keycloak +
+local `users` table); everything else — bio, city, DOB, gender, interests,
+photo, account lifecycle — lands in the new `feature.profile` bounded context.
+Covers US-005 (interests onboarding), US-007 (full profile), US-008 (update
+interests), US-012 (delete account).
+
+### Delivered (4 PRs + wrap-up)
+
+| PR | Periphery | Migrations |
+|----|-----------|------------|
+| #5 (squash `54a6c6a`)  | Profile aggregate, GET/PUT `/me`, auto-provisioning, `ProfileCompletedEvent` skeleton | V7 |
+| #6 via #8 (`bce12b1`)  | Interest catalogue + `profile_interests` join + GET `/interests` (public) + PUT `/me/interests`; isComplete now requires ≥1 interest | V8 (15 seed rows) |
+| #9 (`39666ef`)         | Photo upload via AWS S3 SDK v2 against MinIO (dev) / S3 (prod), POST/DELETE `/me/photo`, presigned URLs in response, MinIO container in docker-compose | — |
+| #10 (`59ebb64`)        | Soft-delete + restore + daily scheduler (cron 04:00 UTC), `ProfileDeletionRequestedEvent` / `ProfilePurgedEvent`, TOCTOU-safe purge | — |
+
+### Module shape
+
+```
+feature/profile/
+├── package-info.java                  @ApplicationModule(displayName = "Profile")
+├── domain/
+│   ├── model/                         Profile, ProfileStatus, Gender, Interest, InterestCategory
+│   ├── event/                         ProfileCompletedEvent, ProfileDeletionRequestedEvent, ProfilePurgedEvent
+│   ├── exception/                     ProfileNotFoundException, ProfileInvalidStateException, InvalidPhotoException
+│   ├── storage/PhotoStorageService    (port)
+│   ├── InterestCatalog                (port)
+│   └── ProfileRepository              (port)
+├── application/
+│   ├── ProfileCommandService          ensureProfile / update / updateInterests / uploadPhoto / removePhoto / requestDeletion / restoreFromDeletion / purge
+│   ├── ProfileQueryService            getByUserId
+│   ├── ProfileDeletionScheduler       @Scheduled daily purge
+│   ├── ProfileStorageProperties       linkup.profile.{max-bytes, allowed-content-types, storage.*}
+│   ├── ProfileLifecycleProperties     linkup.profile.lifecycle.{deletion-grace-period, purge-cron}
+│   └── dto/                           UpdateProfileCommand, UpdateInterestsCommand
+└── infrastructure/
+    ├── persistence/jpa/               JpaProfileRepository, JpaInterestCatalog
+    ├── storage/                       MinioConfig (S3Client + S3Presigner), MinioPhotoStorageService
+    └── rest/
+        ├── controller/                ProfileController, InterestController
+        └── dto/                       ProfileRequest, ProfileResponse, InterestsRequest, InterestResponse
+```
+
+### Domain invariants
+
+| Rule | Where |
+|------|-------|
+| `bio` ≤ 150 chars, `city` ≤ 100 chars | Java + DB CHECK |
+| `dateOfBirth` past, age ≥ 13 | Java (`Clock`-driven for tests) |
+| Mutating a `DELETION_PENDING` profile refused | `Profile.requireMutable` |
+| `isComplete` = bio + city + DOB + ≥1 interest (US-005) | `Profile.isComplete` |
+| Max 10 interests per user (`Profile.MAX_INTERESTS`) | Java |
+| Photo: JPEG / PNG / WebP only, ≤ 1 MB | `ProfileCommandService.uploadPhoto` |
+| Unknown interest slugs silently dropped | `InterestCatalog.filterValidSlugs` |
+| Purge re-checks `isReadyForPurge(now)` inside its own TX | TOCTOU guard against restore race |
+
+### Cross-module surface
+
+| Event | Future consumers |
+|-------|------------------|
+| `ProfileCompletedEvent` | recommendation (V2), notification (S2 welcome email) |
+| `ProfileDeletionRequestedEvent` | notification (S2), booking (anonymize / refund) |
+| `ProfilePurgedEvent` | auth (Keycloak user disable), booking, notification |
+
+No `feature.profile.api` named-interface exposed yet — added only when a sibling
+module actually needs to read a profile (recommendation V2). Keeps the surface
+honest (YAGNI).
+
+### REST surface
+
+| Verb | Path | Auth | US |
+|------|------|------|-----|
+| GET    | `/api/v1/interests` | **public** | US-005 |
+| GET    | `/api/v1/profile/me` | JWT | — (auto-provisions) |
+| PUT    | `/api/v1/profile/me` | JWT | US-007 |
+| PUT    | `/api/v1/profile/me/interests` | JWT | US-005, US-008 |
+| POST   | `/api/v1/profile/me/photo` (multipart) | JWT | US-007 |
+| DELETE | `/api/v1/profile/me/photo` | JWT | US-007 |
+| DELETE | `/api/v1/profile/me` | JWT | US-012 |
+| POST   | `/api/v1/profile/me/restore` | JWT | US-012 |
+
+### Storage choice
+
+**AWS S3 SDK v2** against MinIO in dev, S3-compatible providers in prod. The
+MinIO Java SDK 8.5.x was the first pick but conflicts with okio 3.x brought
+by Spring Boot 4 transitively (`NoSuchMethodError` at boot). AWS SDK v2 with
+`forcePathStyle(true)` + `UrlConnectionHttpClient` is the canonical drop-in
+that works against MinIO, Wasabi, OVH, Backblaze B2 with only env-vars
+switching. No AWS account required in dev — see PR #9 for the rationale.
+
+### Infra
+
+- `docker-compose.yaml`: new `minio` container (S3 on 9000, console on **9090** —
+  not 9001 because Keycloak owns it for its management endpoint)
+- `scripts/run-dev.ps1`: waits on `postgres + keycloak + minio` healthchecks,
+  pre-flight check on port 8080 (catches orphan JVMs after Ctrl+C)
+- `application-dev.yml`: `management.health.mail.enabled=false` so a missing
+  MailHog doesn't flood `/actuator/health` (MailHog is behind the `tools`
+  Compose profile)
+
+### Tests
+
+**151 surefire + LinkupApplicationTests (Testcontainers Postgres + MinIO) green.**
++45 new across the sprint:
+- `ProfileTest` (11), `ProfileCommandServiceTest` (16 inc. soft-delete + photo),
+  `ProfileControllerTest` (9), `InterestControllerTest` (1), plus the
+  TestcontainersConfiguration wiring for MinIO.
+
+### Architecture verification
+
+- Spring Modulith: GREEN. `feature.profile` reaches only into `core::audit`,
+  `core::exception`, `shared::event`, `feature.auth::api` (`CurrentUserAccessor`).
+- `LinkupApplicationTests` confirms Flyway V1..V8 applies on a fresh Postgres
+  and MinIO bucket creation succeeds at boot.
+
+### Design decisions
+
+1. **AWS S3 SDK v2 over MinIO Java SDK** — okio version conflict made the SDK
+   unbootable. AWS SDK v2 + `forcePathStyle` is the canonical S3-compatible
+   client. Same code talks to MinIO / S3 / Wasabi with only env-var changes.
+2. **Presigned URLs in the response** (TTL 1h default) — browser consumes
+   directly, no proxy load on the backend. Bucket stays private.
+3. **Photo path layout** `profiles/<profileId>/avatar.<ext>` —
+   overwrite-on-reupload so the orphan is naturally the previous extension.
+   Best-effort delete on the old key (logged, never fatal).
+4. **Interests via `@ElementCollection`** on `profile_interests` join keyed
+   by `profile_id` — intra-module FK is allowed (CLAUDE.md §9 only forbids
+   cross-module FKs). Catalogue slug is the natural key (stable across renames).
+5. **Min age 13** for `dateOfBirth` — common West-African e-commerce KYC.
+   Configurable via the `Profile.MIN_AGE_YEARS` constant (not externalised
+   yet — YAGNI until a market needs to differ).
+6. **Soft-delete grace period 30 days** — GDPR-friendly. Configurable via
+   `linkup.profile.lifecycle.deletion-grace-period: PT…`.
+7. **Per-row purge transactions** — a single failure doesn't poison the batch.
+   `isReadyForPurge(now)` re-checked inside `purge()` so a restore between
+   scan and per-row TX wins the race.
+8. **No `feature.profile.api` exposed yet** — added when a sibling module
+   actually reads a profile (recommendation V2). YAGNI on speculative API.
+
+### DoD checklist
+
+- ✅ Functional: US-005, US-007, US-008, US-012 end-to-end
+- ✅ Tests: 45 new green; Testcontainers IT validates Flyway V1..V8 + MinIO
+- ✅ Documentation: OpenAPI on all endpoints, JavaDoc on aggregates and ports,
+  full Bruno collection with auto-capture of `profileId`
+- ✅ Zero dette: no TODO, no commented code
+- ✅ Déployable: V7 + V8 Flyway idempotent, MinIO bucket auto-created
+- ✅ Observabilité: SLF4J INFO on writes, scheduler logs purged / errored counts
+- ✅ Sécurité: photo content-type allowlist, size cap, MIME stored as metadata;
+  presigned URLs (bucket private); GET /interests public (needed pre-login)
+- ✅ Performance: partial index `(status, deletion_scheduled_at)` for the
+  scheduler scan; @ElementCollection eager on interests (bounded by MAX_INTERESTS = 10)
+- ✅ Inter-module: 3 domain events published; no consumer wired yet (correct
+  — they'll land with `notification` in Sprint S2)
+- ✅ Git: 4 PRs Conventional-Commits compliant, all squash-merged, branches deleted
+
+### Carried-over DX papercuts fixed in this sprint
+
+- MinIO port 9001 clashed with Keycloak management → moved to 9090
+- `MailHealthIndicator` flooded `/actuator/health` with SMTP stacks when MailHog
+  isn't running → disabled in dev profile
+- Ctrl+C in Maven leaves orphan JVM on port 8080 → `run-dev.ps1` now pre-checks
+  with a [y/N] prompt before killing
+- `mvnw` lost exec bit on Windows checkouts → fixed via `git update-index --chmod=+x`
+- `bruno/environments/Local.bru` token gets committed accidentally → noted as
+  recurring; future cleanup PR will use `git update-index --skip-worktree`
+
+---
+
 ## Phase G — Schemas Postgres séparés (next)
 
 ### Scope (planned)
