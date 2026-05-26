@@ -157,20 +157,32 @@ public class Profile extends Auditable {
                 && interestSlugs.size() >= MIN_INTERESTS_FOR_COMPLETENESS;
     }
 
-    /** Marker for the soft-delete flow (PR #8). Made package-private until then to avoid premature use. */
-    void markForDeletion(Instant scheduledAt) {
+    /**
+     * Move the profile to {@code DELETION_PENDING} and pin the purge instant.
+     * Refused on a profile already pending deletion — call {@link #cancelDeletion()}
+     * + a fresh {@code markForDeletion} if you want to reschedule.
+     */
+    public void markForDeletion(Instant scheduledAt) {
         Objects.requireNonNull(scheduledAt, "scheduledAt");
         requireMutable();
         this.status = ProfileStatus.DELETION_PENDING;
         this.deletionScheduledAt = scheduledAt;
     }
 
-    void cancelDeletion() {
+    /** Cancel a pending deletion. Refused if the profile is already active. */
+    public void cancelDeletion() {
         if (status != ProfileStatus.DELETION_PENDING) {
             throw new ProfileInvalidStateException("Profile is not pending deletion");
         }
         this.status = ProfileStatus.ACTIVE;
         this.deletionScheduledAt = null;
+    }
+
+    /** Whether the grace period has expired and the row is ready for hard-purge. */
+    public boolean isReadyForPurge(Instant now) {
+        return status == ProfileStatus.DELETION_PENDING
+                && deletionScheduledAt != null
+                && !now.isBefore(deletionScheduledAt);
     }
 
     /** Attach the storage key returned by {@code PhotoStorageService.upload}. Public for the command service. */

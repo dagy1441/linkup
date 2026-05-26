@@ -1,0 +1,30 @@
+meta {
+  name: POST Restore Account
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/v1/profile/me/restore
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+docs {
+  ## POST /api/v1/profile/me/restore — cancel a pending deletion (US-012)
+
+  Ramène le profil de `DELETION_PENDING` → `ACTIVE`. Annule donc le
+  hard-purge prévu. Doit être appelé **pendant le grace period** (30j) ;
+  sinon le scheduler aura déjà tout supprimé.
+
+  **Réponse 200** : profil restauré avec `status: ACTIVE` et `deletionScheduledAt: null`.
+
+  **Erreurs** :
+  - `401` → token absent
+  - `404` → aucun profil pour cet utilisateur (peut arriver si déjà purgé)
+  - `422` → profil déjà `ACTIVE` (rien à restaurer)
+}

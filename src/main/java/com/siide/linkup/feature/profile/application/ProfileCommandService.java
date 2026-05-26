@@ -5,7 +5,11 @@ import com.siide.linkup.feature.profile.application.dto.UpdateProfileCommand;
 import com.siide.linkup.feature.profile.domain.InterestCatalog;
 import com.siide.linkup.feature.profile.domain.ProfileRepository;
 import com.siide.linkup.feature.profile.domain.event.ProfileCompletedEvent;
+import com.siide.linkup.feature.profile.domain.event.ProfileDeletionRequestedEvent;
+import com.siide.linkup.feature.profile.domain.event.ProfilePurgedEvent;
 import com.siide.linkup.feature.profile.domain.exception.InvalidPhotoException;
+import com.siide.linkup.feature.profile.domain.exception.ProfileInvalidStateException;
+import com.siide.linkup.feature.profile.domain.exception.ProfileNotFoundException;
 import com.siide.linkup.feature.profile.domain.model.Profile;
 import com.siide.linkup.feature.profile.domain.storage.PhotoStorageService;
 import org.slf4j.Logger;
@@ -35,6 +39,7 @@ public class ProfileCommandService {
     private final InterestCatalog interestCatalog;
     private final PhotoStorageService photoStorage;
     private final ProfileStorageProperties storageProperties;
+    private final ProfileLifecycleProperties lifecycleProperties;
     private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
 
@@ -42,12 +47,14 @@ public class ProfileCommandService {
                                  InterestCatalog interestCatalog,
                                  PhotoStorageService photoStorage,
                                  ProfileStorageProperties storageProperties,
+                                 ProfileLifecycleProperties lifecycleProperties,
                                  ApplicationEventPublisher eventPublisher,
                                  Clock clock) {
         this.repository = repository;
         this.interestCatalog = interestCatalog;
         this.photoStorage = photoStorage;
         this.storageProperties = storageProperties;
+        this.lifecycleProperties = lifecycleProperties;
         this.eventPublisher = eventPublisher;
         this.clock = clock;
     }
@@ -155,6 +162,71 @@ public class ProfileCommandService {
         }
         log.info("Profile photo removed id={} userId={}", saved.getId(), userId);
         return saved;
+    }
+
+    /**
+     * Mark the profile {@code DELETION_PENDING} and schedule the hard purge after
+     * the configured grace period. Refused if the profile is already pending —
+     * the existing schedule wins (we don't reset the clock on every click).
+     */
+    @Transactional
+    public Profile requestDeletion(UUID userId) {
+        Profile profile = ensureProfile(userId);
+        Instant now = Instant.now(clock);
+        Instant purgeAt = now.plus(lifecycleProperties.deletionGracePeriod());
+        profile.markForDeletion(purgeAt);
+        Profile saved = repository.save(profile);
+        eventPublisher.publishEvent(ProfileDeletionRequestedEvent.of(
+                saved.getId(), userId, purgeAt, now));
+        log.info("Profile deletion requested id={} userId={} purgeAt={}",
+                saved.getId(), userId, purgeAt);
+        return saved;
+    }
+
+    /** Cancel a pending deletion — must run during the grace period. */
+    @Transactional
+    public Profile restoreFromDeletion(UUID userId) {
+        Profile profile = repository.findByUserId(userId)
+                .orElseThrow(() -> new ProfileNotFoundException(userId));
+        profile.cancelDeletion(); // throws ProfileInvalidStateException if status != DELETION_PENDING
+        Profile saved = repository.save(profile);
+        log.info("Profile deletion cancelled id={} userId={}", saved.getId(), userId);
+        return saved;
+    }
+
+    /**
+     * Hard-purge a profile whose grace period has elapsed. Called per-row by
+     * {@link ProfileDeletionScheduler} so each profile runs in its own transaction.
+     * The scheduler hands the previously-loaded {@link Profile} so we don't pay
+     * an extra round-trip.
+     * <p>
+     * Steps:
+     * <ol>
+     *     <li>Re-check {@link Profile#isReadyForPurge(Instant)} — guards against a
+     *         restore that happened between the scan and this call.</li>
+     *     <li>Best-effort delete the photo object (orphan in storage is non-fatal).</li>
+     *     <li>Emit {@code ProfilePurgedEvent} so other modules can compensate.</li>
+     *     <li>Delete the row (cascades {@code profile_interests}).</li>
+     * </ol>
+     */
+    @Transactional
+    public void purge(Profile profile) {
+        Instant now = Instant.now(clock);
+        if (!profile.isReadyForPurge(now)) {
+            log.debug("Skip purge id={} — no longer ready (likely restored)", profile.getId());
+            return;
+        }
+        if (profile.getPhotoKey() != null) {
+            try {
+                photoStorage.delete(profile.getPhotoKey());
+            } catch (RuntimeException e) {
+                log.warn("Photo {} not deleted during purge — orphaned in storage",
+                        profile.getPhotoKey(), e);
+            }
+        }
+        eventPublisher.publishEvent(ProfilePurgedEvent.of(profile.getId(), profile.getUserId(), now));
+        repository.delete(profile);
+        log.info("Profile purged id={} userId={}", profile.getId(), profile.getUserId());
     }
 
     private void fireIfNewlyCompleted(Profile saved, boolean wasComplete, UUID userId, String op) {

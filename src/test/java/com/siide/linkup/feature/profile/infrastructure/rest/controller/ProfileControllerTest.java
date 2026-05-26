@@ -175,6 +175,32 @@ class ProfileControllerTest {
     }
 
     @Test
+    void delete_me_marks_profile_for_deletion() throws Exception {
+        when(currentUserAccessor.requireCurrentUserId()).thenReturn(userId);
+        Profile pending = Profile.empty(userId);
+        pending.markForDeletion(java.time.Instant.parse("2026-06-25T10:00:00Z"));
+        when(commandService.requestDeletion(userId)).thenReturn(pending);
+
+        mockMvc.perform(delete("/api/v1/profile/me"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DELETION_PENDING"))
+                .andExpect(jsonPath("$.deletionScheduledAt").exists());
+    }
+
+    @Test
+    void post_me_restore_brings_profile_back_to_active() throws Exception {
+        when(currentUserAccessor.requireCurrentUserId()).thenReturn(userId);
+        Profile restored = Profile.empty(userId); // ACTIVE again
+        when(commandService.restoreFromDeletion(userId)).thenReturn(restored);
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .post("/api/v1/profile/me/restore"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.deletionScheduledAt").doesNotExist());
+    }
+
+    @Test
     void delete_me_photo_clears_photo() throws Exception {
         when(currentUserAccessor.requireCurrentUserId()).thenReturn(userId);
         Profile cleared = Profile.empty(userId);

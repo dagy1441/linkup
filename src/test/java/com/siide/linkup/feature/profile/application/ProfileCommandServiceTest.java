@@ -57,8 +57,10 @@ class ProfileCommandServiceTest {
                 List.of("image/jpeg", "image/png", "image/webp"),
                 new ProfileStorageProperties.Storage(
                         "http://localhost:9000", "ak", "sk", "linkup-profiles", Duration.ofHours(1)));
-        service = new ProfileCommandService(repository, interestCatalog, photoStorage, props, events,
-                Clock.fixed(now, ZoneOffset.UTC));
+        ProfileLifecycleProperties lifecycle = new ProfileLifecycleProperties(
+                Duration.ofDays(30), "0 0 4 * * *");
+        service = new ProfileCommandService(repository, interestCatalog, photoStorage, props, lifecycle,
+                events, Clock.fixed(now, ZoneOffset.UTC));
     }
 
     @Test
@@ -154,6 +156,66 @@ class ProfileCommandServiceTest {
 
         assertThat(result.getPhotoKey()).isNull();
         verify(photoStorage, never()).delete(any());
+    }
+
+    @Test
+    void request_deletion_marks_profile_and_schedules_purge() {
+        Profile profile = Profile.empty(userId);
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(profile));
+
+        Profile result = service.requestDeletion(userId);
+
+        assertThat(result.getStatus().name()).isEqualTo("DELETION_PENDING");
+        assertThat(result.getDeletionScheduledAt()).isEqualTo(now.plus(Duration.ofDays(30)));
+        verify(events).publishEvent(any(
+                com.siide.linkup.feature.profile.domain.event.ProfileDeletionRequestedEvent.class));
+    }
+
+    @Test
+    void restore_deletion_brings_profile_back_to_active() {
+        Profile profile = Profile.empty(userId);
+        profile.markForDeletion(now.plus(Duration.ofDays(30)));
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(profile));
+
+        Profile result = service.restoreFromDeletion(userId);
+
+        assertThat(result.getStatus().name()).isEqualTo("ACTIVE");
+        assertThat(result.getDeletionScheduledAt()).isNull();
+    }
+
+    @Test
+    void restore_deletion_throws_when_profile_is_active() {
+        Profile profile = Profile.empty(userId);
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(profile));
+
+        assertThatThrownBy(() -> service.restoreFromDeletion(userId))
+                .isInstanceOf(com.siide.linkup.feature.profile.domain.exception.ProfileInvalidStateException.class);
+    }
+
+    @Test
+    void purge_deletes_profile_and_emits_event_when_ready() {
+        Profile profile = Profile.empty(userId);
+        profile.attachPhoto("profiles/" + profile.getId() + "/avatar.jpg"); // BEFORE markForDeletion (mutates only when ACTIVE)
+        profile.markForDeletion(now.minus(Duration.ofMinutes(1))); // already expired
+
+        service.purge(profile);
+
+        verify(photoStorage).delete("profiles/" + profile.getId() + "/avatar.jpg");
+        verify(events).publishEvent(any(
+                com.siide.linkup.feature.profile.domain.event.ProfilePurgedEvent.class));
+        verify(repository).delete(profile);
+    }
+
+    @Test
+    void purge_is_skipped_when_profile_was_restored_between_scan_and_call() {
+        // Scheduler picked it up while DELETION_PENDING, but user restored before purge ran.
+        Profile profile = Profile.empty(userId); // status = ACTIVE
+
+        service.purge(profile);
+
+        verify(repository, never()).delete(any());
+        verify(events, never()).publishEvent(any(
+                com.siide.linkup.feature.profile.domain.event.ProfilePurgedEvent.class));
     }
 
     @Test
