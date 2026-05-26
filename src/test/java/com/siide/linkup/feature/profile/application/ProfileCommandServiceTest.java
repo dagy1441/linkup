@@ -5,22 +5,29 @@ import com.siide.linkup.feature.profile.application.dto.UpdateProfileCommand;
 import com.siide.linkup.feature.profile.domain.InterestCatalog;
 import com.siide.linkup.feature.profile.domain.ProfileRepository;
 import com.siide.linkup.feature.profile.domain.event.ProfileCompletedEvent;
+import com.siide.linkup.feature.profile.domain.exception.InvalidPhotoException;
 import com.siide.linkup.feature.profile.domain.model.Gender;
 import com.siide.linkup.feature.profile.domain.model.Profile;
+import com.siide.linkup.feature.profile.domain.storage.PhotoStorageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
 
+import java.io.ByteArrayInputStream;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -30,6 +37,7 @@ class ProfileCommandServiceTest {
 
     private ProfileRepository repository;
     private InterestCatalog interestCatalog;
+    private PhotoStorageService photoStorage;
     private ApplicationEventPublisher events;
     private ProfileCommandService service;
 
@@ -40,10 +48,16 @@ class ProfileCommandServiceTest {
     void setUp() {
         repository = mock(ProfileRepository.class);
         interestCatalog = mock(InterestCatalog.class);
+        photoStorage = mock(PhotoStorageService.class);
         events = mock(ApplicationEventPublisher.class);
         // save() returns its argument so the service sees the same instance back.
         when(repository.save(any(Profile.class))).thenAnswer(inv -> inv.getArgument(0));
-        service = new ProfileCommandService(repository, interestCatalog, events,
+        ProfileStorageProperties props = new ProfileStorageProperties(
+                1024L,                                          // tight 1 KB cap for tests
+                List.of("image/jpeg", "image/png", "image/webp"),
+                new ProfileStorageProperties.Storage(
+                        "http://localhost:9000", "ak", "sk", "linkup-profiles", Duration.ofHours(1)));
+        service = new ProfileCommandService(repository, interestCatalog, photoStorage, props, events,
                 Clock.fixed(now, ZoneOffset.UTC));
     }
 
@@ -93,6 +107,53 @@ class ProfileCommandServiceTest {
         service.updateInterests(userId, new UpdateInterestsCommand(Set.of("yoga", "unknown-slug")));
 
         verify(events).publishEvent(any(ProfileCompletedEvent.class));
+    }
+
+    @Test
+    void upload_photo_rejects_unsupported_content_type() {
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(Profile.empty(userId)));
+
+        assertThatThrownBy(() -> service.uploadPhoto(userId, "image/gif", 100,
+                new ByteArrayInputStream(new byte[100])))
+                .isInstanceOf(InvalidPhotoException.class)
+                .hasMessageContaining("unsupported content-type");
+    }
+
+    @Test
+    void upload_photo_rejects_oversized_payload() {
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(Profile.empty(userId)));
+
+        // setUp() configured maxBytes=1024
+        assertThatThrownBy(() -> service.uploadPhoto(userId, "image/jpeg", 2048,
+                new ByteArrayInputStream(new byte[2048])))
+                .isInstanceOf(InvalidPhotoException.class)
+                .hasMessageContaining("exceeds");
+    }
+
+    @Test
+    void upload_photo_attaches_new_key_and_deletes_previous() {
+        Profile profile = Profile.empty(userId);
+        profile.attachPhoto("profiles/" + profile.getId() + "/avatar.old");
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(profile));
+        when(photoStorage.upload(any(), any(), anyLong(), any()))
+                .thenReturn("profiles/" + profile.getId() + "/avatar.jpg");
+
+        Profile result = service.uploadPhoto(userId, "image/jpeg", 100,
+                new ByteArrayInputStream(new byte[100]));
+
+        assertThat(result.getPhotoKey()).endsWith("avatar.jpg");
+        verify(photoStorage).delete("profiles/" + profile.getId() + "/avatar.old");
+    }
+
+    @Test
+    void remove_photo_is_noop_when_none_attached() {
+        Profile profile = Profile.empty(userId);
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(profile));
+
+        Profile result = service.removePhoto(userId);
+
+        assertThat(result.getPhotoKey()).isNull();
+        verify(photoStorage, never()).delete(any());
     }
 
     @Test

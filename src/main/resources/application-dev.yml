@@ -68,6 +68,13 @@ management:
   endpoint:
     health:
       show-details: always
+  health:
+    # MailHog runs only behind `docker compose --profile tools up -d`. When it's
+    # not running, MailHealthIndicator floods /actuator/health with 503 + a noisy
+    # SMTP stack trace. Disable the contributor in dev — Sprint S2 will turn it
+    # back on once the notification module ships.
+    mail:
+      enabled: false
   # No OTLP collector in local dev — disable the exporters to silence the
   # ConnectException spam on http://localhost:4318. Re-enable in prod/staging
   # via OTEL_EXPORTER_OTLP_ENDPOINT or by overriding these flags.

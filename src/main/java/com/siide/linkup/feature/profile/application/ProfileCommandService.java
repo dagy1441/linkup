@@ -5,13 +5,16 @@ import com.siide.linkup.feature.profile.application.dto.UpdateProfileCommand;
 import com.siide.linkup.feature.profile.domain.InterestCatalog;
 import com.siide.linkup.feature.profile.domain.ProfileRepository;
 import com.siide.linkup.feature.profile.domain.event.ProfileCompletedEvent;
+import com.siide.linkup.feature.profile.domain.exception.InvalidPhotoException;
 import com.siide.linkup.feature.profile.domain.model.Profile;
+import com.siide.linkup.feature.profile.domain.storage.PhotoStorageService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.InputStream;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Set;
@@ -30,15 +33,21 @@ public class ProfileCommandService {
 
     private final ProfileRepository repository;
     private final InterestCatalog interestCatalog;
+    private final PhotoStorageService photoStorage;
+    private final ProfileStorageProperties storageProperties;
     private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
 
     public ProfileCommandService(ProfileRepository repository,
                                  InterestCatalog interestCatalog,
+                                 PhotoStorageService photoStorage,
+                                 ProfileStorageProperties storageProperties,
                                  ApplicationEventPublisher eventPublisher,
                                  Clock clock) {
         this.repository = repository;
         this.interestCatalog = interestCatalog;
+        this.photoStorage = photoStorage;
+        this.storageProperties = storageProperties;
         this.eventPublisher = eventPublisher;
         this.clock = clock;
     }
@@ -85,6 +94,66 @@ public class ProfileCommandService {
         profile.replaceInterests(validSlugs);
         Profile saved = repository.save(profile);
         fireIfNewlyCompleted(saved, wasComplete, userId, "interests-updated");
+        return saved;
+    }
+
+    /**
+     * Replace (or set) the profile photo. Validates content-type + size against
+     * {@link ProfileStorageProperties}, uploads to MinIO, then attaches the new
+     * key. The previous key (if any) is deleted AFTER the new one is committed
+     * to avoid leaving the profile without a photo on a partial failure.
+     */
+    @Transactional
+    public Profile uploadPhoto(UUID userId, String contentType, long size, InputStream data) {
+        if (contentType == null || !storageProperties.allowedContentTypeSet().contains(contentType.toLowerCase())) {
+            throw new InvalidPhotoException(
+                    "unsupported content-type (allowed: " + storageProperties.allowedContentTypes() + ")");
+        }
+        if (size <= 0) {
+            throw new InvalidPhotoException("empty payload");
+        }
+        if (size > storageProperties.maxBytes()) {
+            throw new InvalidPhotoException(
+                    "payload exceeds " + storageProperties.maxBytes() + " bytes (got " + size + ")");
+        }
+
+        Profile profile = ensureProfile(userId);
+        String previousKey = profile.getPhotoKey();
+        String newKey = photoStorage.upload(profile.getId(), contentType.toLowerCase(), size, data);
+        profile.attachPhoto(newKey);
+        Profile saved = repository.save(profile);
+
+        // Best-effort: drop the old object after the new one is committed.
+        if (previousKey != null && !previousKey.equals(newKey)) {
+            try {
+                photoStorage.delete(previousKey);
+            } catch (RuntimeException e) {
+                log.warn("Could not delete previous photo key={} (new key={} already attached)",
+                        previousKey, newKey, e);
+            }
+        }
+        log.info("Profile photo uploaded id={} userId={} key={}", saved.getId(), userId, newKey);
+        return saved;
+    }
+
+    /** Remove the photo (idempotent). */
+    @Transactional
+    public Profile removePhoto(UUID userId) {
+        Profile profile = ensureProfile(userId);
+        String key = profile.getPhotoKey();
+        if (key == null) {
+            return profile;
+        }
+        profile.clearPhoto();
+        Profile saved = repository.save(profile);
+        try {
+            photoStorage.delete(key);
+        } catch (RuntimeException e) {
+            // Aggregate already updated — log + continue. Janitor sweep (Phase H) will catch orphans.
+            log.warn("Could not delete photo key={} for profile id={} — orphaned in storage",
+                    key, profile.getId(), e);
+        }
+        log.info("Profile photo removed id={} userId={}", saved.getId(), userId);
         return saved;
     }
 

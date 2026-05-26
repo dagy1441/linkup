@@ -1,0 +1,30 @@
+meta {
+  name: DELETE My Photo
+  type: http
+  seq: 6
+}
+
+delete {
+  url: {{baseUrl}}/api/v1/profile/me/photo
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+docs {
+  ## DELETE /api/v1/profile/me/photo
+
+  Supprime la photo de profil. **Idempotent** : no-op si le profil n'a pas de photo.
+
+  La suppression côté MinIO est best-effort — l'aggrégat est mis à jour (photoKey = null)
+  même si l'objet S3 ne peut pas être supprimé (orphan logged, picked up par un janitor sweep en Phase H).
+
+  **Réponse 200** : profil avec `photoKey: null` et `photoUrl: null`.
+
+  **Erreurs** :
+  - `401` → token absent
+  - `422` → profil en `DELETION_PENDING`
+}

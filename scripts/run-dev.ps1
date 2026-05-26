@@ -79,20 +79,22 @@ if (-not $SkipInfra) {
     }
     if ($LASTEXITCODE -ne 0) { Die "docker compose up failed" }
 
-    Write-Step "Waiting for postgres + keycloak healthchecks (max 180s)"
+    Write-Step "Waiting for postgres + keycloak + minio healthchecks (max 180s)"
     $deadline = (Get-Date).AddSeconds(180)
     $ready = $false
     while ((Get-Date) -lt $deadline) {
         $pgId = (docker compose ps -q postgres) 2>$null
         $kcId = (docker compose ps -q keycloak) 2>$null
-        if ($pgId -and $kcId) {
+        $mnId = (docker compose ps -q minio) 2>$null
+        if ($pgId -and $kcId -and $mnId) {
             $pg = docker inspect --format '{{.State.Health.Status}}' $pgId 2>$null
             $kc = docker inspect --format '{{.State.Health.Status}}' $kcId 2>$null
-            if ($pg -eq "healthy" -and $kc -eq "healthy") {
+            $mn = docker inspect --format '{{.State.Health.Status}}' $mnId 2>$null
+            if ($pg -eq "healthy" -and $kc -eq "healthy" -and $mn -eq "healthy") {
                 $ready = $true
                 break
             }
-            Write-Host ("   postgres={0}  keycloak={1}" -f $pg, $kc) -ForegroundColor DarkGray
+            Write-Host ("   postgres={0}  keycloak={1}  minio={2}" -f $pg, $kc, $mn) -ForegroundColor DarkGray
         } else {
             Write-Host "   waiting for containers..." -ForegroundColor DarkGray
         }
@@ -121,7 +123,33 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Ok ("DB reachable as '{0}'" -f $dbUser)
 
-# 6. Launch backend
+# 6. Sanity-check port 8080 — a previous Ctrl+C often leaves the JVM hanging.
+#    Failing fast here with a clean message beats Spring's wall-of-stack ten seconds later.
+Write-Step "Sanity-check: port 8080 is free"
+$listener = Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue
+if ($listener) {
+    $procIds = ($listener.OwningProcess | Sort-Object -Unique)
+    $procNames = $procIds | ForEach-Object {
+        $p = Get-Process -Id $_ -ErrorAction SilentlyContinue
+        if ($p) { "$($p.ProcessName)(PID $_)" } else { "PID $_" }
+    }
+    Write-Warn ("Port 8080 already in use by: {0}" -f ($procNames -join ', '))
+    $answer = Read-Host "Kill the listening process and continue? [y/N]"
+    if ($answer -match '^[yY]') {
+        $procIds | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
+        Start-Sleep -Seconds 2
+        if (Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue) {
+            Die "Port 8080 still in use after kill attempt — investigate manually."
+        }
+        Write-Ok "Port 8080 freed"
+    } else {
+        Die "Aborting. Free port 8080 and re-run."
+    }
+} else {
+    Write-Ok "Port 8080 is free"
+}
+
+# 7. Launch backend
 Write-Step "Starting backend on http://localhost:8080  (Ctrl+C to stop)"
 Write-Host ""
 Write-Host "   Swagger UI : http://localhost:8080/swagger-ui.html" -ForegroundColor Gray

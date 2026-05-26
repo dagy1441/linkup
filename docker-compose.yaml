@@ -110,6 +110,35 @@ services:
     networks: [linkup-network]
 
   # =========================
+  # MINIO — S3-compatible object storage (photos / profile pictures)
+  # =========================
+  # Always-on (not behind the tools profile): the backend requires it to upload
+  # profile photos (US-007). Console UI on :9001 stays useful for debugging.
+  minio:
+    image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+    restart: unless-stopped
+    # Console on 9090 (not 9001 — Keycloak's management endpoint already owns 9001).
+    command: ["server", "/data", "--console-address", ":9090"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"   # S3 API
+      - "9090:9090"   # web console (admin)
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks: [linkup-network]
+
+  # =========================
   # PGADMIN — dev UI (profile: tools)
   # =========================
   pgadmin:
@@ -198,6 +227,7 @@ volumes:
   postgres_data:
   redis_data:
   pgadmin_data:
+  minio_data:
 
 # =========================
 # NETWORK

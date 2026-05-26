@@ -1,0 +1,49 @@
+meta {
+  name: POST My Photo
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/v1/profile/me/photo
+  body: multipartForm
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:multipart-form {
+  file: @file()
+}
+
+docs {
+  ## POST /api/v1/profile/me/photo
+
+  Upload (ou remplace) la photo de profil de l'utilisateur authentifié.
+
+  ### Format multipart/form-data
+  - **Champ** : `file` (file picker dans Bruno)
+  - **Types acceptés** : `image/jpeg`, `image/png`, `image/webp` (whitelist stricte)
+  - **Taille max** : 1 MB par défaut (`linkup.profile.max-bytes`)
+
+  ### Comportement
+  - Upload atomique : la nouvelle photo est commit AVANT que l'ancienne soit supprimée
+  - Si l'ancienne photo existe et que sa suppression échoue → log warn, le profil garde la nouvelle (best-effort cleanup)
+  - Stockage : MinIO en dev (bucket `linkup-profiles`), S3 / Wasabi en prod
+
+  **Réponse 200** :
+  ```json
+  {
+    "photoKey": "profiles/<profileId>/avatar.jpg",
+    "photoUrl": "http://localhost:9000/linkup-profiles/profiles/.../avatar.jpg?X-Amz-..."
+  }
+  ```
+  Le `photoUrl` est une **URL présignée** (TTL 1h par défaut). Le navigateur peut la consommer directement via `<img src>`.
+
+  **Erreurs** :
+  - `400` → fichier absent ou Spring servlet limit dépassé
+  - `401` → token absent
+  - `422` → `INVALID_PHOTO` (mauvais content-type, > 1 MB, payload vide)
+}
