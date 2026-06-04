@@ -69,6 +69,18 @@ public class ActivityController {
                 a -> ActivityResponse.from(a, organizerNames.getOrDefault(a.getOrganizerId(), UNKNOWN_ORGANIZER))));
     }
 
+    @GetMapping("/mine")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "List activities organized by the authenticated user (any status, sorted by date DESC).")
+    public ResponseEntity<PageResponse<ActivityResponse>> listMine(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        UUID organizerId = currentUserAccessor.requireCurrentUserId();
+        Page<Activity> result = queryService.listMine(organizerId, page, size);
+        String name = userDirectory.findDisplayName(organizerId).orElse(UNKNOWN_ORGANIZER);
+        return ResponseEntity.ok(PageResponse.from(result, a -> ActivityResponse.from(a, name)));
+    }
+
     @GetMapping("/{id}")
     @Operation(summary = "Get a single activity by id.")
     public ResponseEntity<ActivityResponse> getById(@PathVariable UUID id) {

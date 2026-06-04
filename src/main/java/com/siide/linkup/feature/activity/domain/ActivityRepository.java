@@ -23,6 +23,14 @@ public interface ActivityRepository {
     Page<Activity> findPublishedUpcomingByCity(String city, Instant now, Pageable pageable);
 
     /**
+     * All activities owned by an organizer, regardless of status or date.
+     * Powers the organizer-dashboard "Mes activités" view — they need to see their
+     * CANCELLED entries and their past ones, not just the publicly listed slice.
+     * Sorted by {@code startsAt DESC} so the most recent / soonest land at the top.
+     */
+    Page<Activity> findByOrganizerId(UUID organizerId, Pageable pageable);
+
+    /**
      * Atomic, race-free seat reservation. Increments {@code booked_count} by {@code qty}
      * in a single SQL statement only when the activity is PUBLISHED, in the future, and
      * has at least {@code qty} remaining capacity. Returns the number of affected rows
