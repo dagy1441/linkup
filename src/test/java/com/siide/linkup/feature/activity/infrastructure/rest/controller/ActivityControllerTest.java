@@ -3,9 +3,11 @@ package com.siide.linkup.feature.activity.infrastructure.rest.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.siide.linkup.feature.activity.application.ActivityCommandService;
+import com.siide.linkup.feature.activity.application.ActivityCoverProperties;
 import com.siide.linkup.feature.activity.application.ActivityQueryService;
 import com.siide.linkup.feature.activity.domain.model.Activity;
 import com.siide.linkup.feature.activity.domain.model.Location;
+import com.siide.linkup.feature.activity.domain.storage.CoverStorageService;
 import com.siide.linkup.feature.activity.infrastructure.rest.dto.ActivityRequest;
 import com.siide.linkup.feature.auth.api.CurrentUserAccessor;
 import com.siide.linkup.feature.auth.api.UserDirectory;
@@ -15,15 +17,19 @@ import org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration
 import org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration;
 import org.springframework.boot.security.oauth2.server.resource.autoconfigure.servlet.OAuth2ResourceServerAutoConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -55,7 +61,22 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         )
 )
 @AutoConfigureMockMvc(addFilters = false)
+@Import(ActivityControllerTest.CoverPropsConfig.class)
 class ActivityControllerTest {
+
+    /**
+     * Records can't be {@code @MockitoBean}'d cleanly (deep chains return null),
+     * so provide a real instance. Tests only need the TTL on the way out.
+     */
+    @TestConfiguration
+    static class CoverPropsConfig {
+        @Bean
+        ActivityCoverProperties activityCoverProperties() {
+            return new ActivityCoverProperties(2_097_152L,
+                    List.of("image/jpeg", "image/png", "image/webp"),
+                    "linkup-activity-covers", Duration.ofHours(1));
+        }
+    }
 
     private static final ObjectMapper MAPPER = new ObjectMapper().registerModule(new JavaTimeModule());
 
@@ -64,6 +85,7 @@ class ActivityControllerTest {
     @MockitoBean ActivityQueryService queryService;
     @MockitoBean CurrentUserAccessor currentUserAccessor;
     @MockitoBean UserDirectory userDirectory;
+    @MockitoBean CoverStorageService coverStorage;
 
     @Test
     void list_returns_paginated_envelope_with_organizer_name() throws Exception {

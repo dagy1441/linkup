@@ -62,6 +62,10 @@ public class Activity extends Auditable {
     @Column(name = "status", nullable = false, length = 20)
     private ActivityStatus status;
 
+    /** Object key in the activity-covers bucket (MinIO / S3). Resolved to a URL by the controller. */
+    @Column(name = "cover_key", length = 255)
+    private String coverKey;
+
     protected Activity() {
         // JPA
     }
@@ -139,6 +143,22 @@ public class Activity extends Auditable {
             throw new IllegalArgumentException("qty must be > 0");
         }
         this.bookedCount = Math.max(0, this.bookedCount - qty);
+    }
+
+    /** Attach the storage key returned by the cover upload. Refused on CANCELLED activities. */
+    public void attachCover(String coverKey) {
+        requireNotCancelled();
+        this.coverKey = coverKey;
+    }
+
+    /** Detach the current cover. Caller is responsible for deleting the object from storage. */
+    public void clearCover() {
+        requireNotCancelled();
+        this.coverKey = null;
+    }
+
+    public String getCoverKey() {
+        return coverKey;
     }
 
     private void setTitle(String title) {

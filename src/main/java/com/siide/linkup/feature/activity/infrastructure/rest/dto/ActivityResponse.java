@@ -23,9 +23,13 @@ public record ActivityResponse(
         int bookedCount,
         int remainingSeats,
         String organizerDisplayName,
-        ActivityStatus status
+        ActivityStatus status,
+        /** Internal storage key — kept for ops / migration, not for UI consumption. */
+        String coverKey,
+        /** Time-limited presigned URL the browser can {@code <img src>} directly. */
+        String coverUrl
 ) {
-    public static ActivityResponse from(Activity a, String organizerDisplayName) {
+    public static ActivityResponse from(Activity a, String organizerDisplayName, String coverUrl) {
         return new ActivityResponse(
                 a.getId(),
                 a.getTitle(),
@@ -39,7 +43,14 @@ public record ActivityResponse(
                 a.getBookedCount(),
                 a.getRemainingSeats(),
                 organizerDisplayName,
-                a.getStatus()
+                a.getStatus(),
+                a.getCoverKey(),
+                coverUrl
         );
+    }
+
+    /** Convenience overload for callers that don't have a presigned URL on hand (tests, list views without enrichment). */
+    public static ActivityResponse from(Activity a, String organizerDisplayName) {
+        return from(a, organizerDisplayName, null);
     }
 }

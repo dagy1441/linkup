@@ -1,0 +1,44 @@
+meta {
+  name: POST Cover
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/v1/activities/{{activityId}}/cover
+  body: multipartForm
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:multipart-form {
+  file: @file()
+}
+
+docs {
+  ## POST /api/v1/activities/{id}/cover
+
+  Upload (ou remplace) la couverture de l'activite. Reserve a l'ORGANIZER
+  proprietaire de l'activite.
+
+  ### Format multipart/form-data
+  - **Champ** : `file` (file picker dans Bruno)
+  - **Types acceptes** : `image/jpeg`, `image/png`, `image/webp`
+  - **Taille max** : 2 MB (`linkup.activity.cover.max-bytes`)
+
+  ### Comportement
+  - Stockage : bucket `linkup-activity-covers` en dev (MinIO), S3 en prod
+  - Path : `activities/<activityId>/cover.<ext>`
+  - L'ancienne cover (si presente) est supprimee APRES que la nouvelle soit
+    commit (best-effort, log warn si echec)
+
+  **Reponse 200** : ActivityResponse avec `coverKey` et `coverUrl` (presigned, TTL 1h).
+
+  **Erreurs** :
+  - `403` -> pas organizer ou pas owner
+  - `404` -> activite inconnue
+  - `422` -> `INVALID_COVER` (mauvais content-type, > 2 MB, payload vide)
+}
