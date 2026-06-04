@@ -1,0 +1,32 @@
+meta {
+  name: DELETE Cover
+  type: http
+  seq: 7
+}
+
+delete {
+  url: {{baseUrl}}/api/v1/activities/{{activityId}}/cover
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+docs {
+  ## DELETE /api/v1/activities/{id}/cover
+
+  Supprime la couverture. Idempotent : no-op si l'activite n'en a pas.
+
+  La suppression cote MinIO/S3 est best-effort -- l'aggregat est mis a jour
+  (coverKey = null) meme si l'objet S3 ne peut pas etre supprime
+  (orphan logged).
+
+  **Reponse 200** : ActivityResponse avec `coverKey: null` et `coverUrl: null`.
+
+  **Erreurs** :
+  - `403` -> pas organizer ou pas owner
+  - `404` -> activite inconnue
+  - `422` -> activite annulee (immuable)
+}

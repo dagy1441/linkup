@@ -1,10 +1,13 @@
 package com.siide.linkup.feature.activity.infrastructure.rest.controller;
 
 import com.siide.linkup.feature.activity.application.ActivityCommandService;
+import com.siide.linkup.feature.activity.application.ActivityCoverProperties;
 import com.siide.linkup.feature.activity.application.ActivityQueryService;
 import com.siide.linkup.feature.activity.application.dto.CreateActivityCommand;
 import com.siide.linkup.feature.activity.application.dto.UpdateActivityCommand;
+import com.siide.linkup.feature.activity.domain.exception.InvalidCoverException;
 import com.siide.linkup.feature.activity.domain.model.Activity;
+import com.siide.linkup.feature.activity.domain.storage.CoverStorageService;
 import com.siide.linkup.feature.activity.infrastructure.rest.dto.ActivityRequest;
 import com.siide.linkup.feature.activity.infrastructure.rest.dto.ActivityResponse;
 import com.siide.linkup.feature.auth.api.CurrentUserAccessor;
@@ -28,7 +31,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -45,15 +50,21 @@ public class ActivityController {
     private final ActivityQueryService queryService;
     private final CurrentUserAccessor currentUserAccessor;
     private final UserDirectory userDirectory;
+    private final CoverStorageService coverStorage;
+    private final ActivityCoverProperties coverProperties;
 
     public ActivityController(ActivityCommandService commandService,
                               ActivityQueryService queryService,
                               CurrentUserAccessor currentUserAccessor,
-                              UserDirectory userDirectory) {
+                              UserDirectory userDirectory,
+                              CoverStorageService coverStorage,
+                              ActivityCoverProperties coverProperties) {
         this.commandService = commandService;
         this.queryService = queryService;
         this.currentUserAccessor = currentUserAccessor;
         this.userDirectory = userDirectory;
+        this.coverStorage = coverStorage;
+        this.coverProperties = coverProperties;
     }
 
     @GetMapping
@@ -66,7 +77,9 @@ public class ActivityController {
         Map<UUID, String> organizerNames = userDirectory.findDisplayNames(
                 result.getContent().stream().map(Activity::getOrganizerId).toList());
         return ResponseEntity.ok(PageResponse.from(result,
-                a -> ActivityResponse.from(a, organizerNames.getOrDefault(a.getOrganizerId(), UNKNOWN_ORGANIZER))));
+                a -> ActivityResponse.from(a,
+                        organizerNames.getOrDefault(a.getOrganizerId(), UNKNOWN_ORGANIZER),
+                        coverUrlOf(a))));
     }
 
     @GetMapping("/mine")
@@ -85,7 +98,7 @@ public class ActivityController {
     @Operation(summary = "Get a single activity by id.")
     public ResponseEntity<ActivityResponse> getById(@PathVariable UUID id) {
         Activity activity = queryService.getById(id);
-        return ResponseEntity.ok(ActivityResponse.from(activity, resolveOrganizerName(activity)));
+        return ResponseEntity.ok(toResponse(activity));
     }
 
     @PostMapping
@@ -97,9 +110,8 @@ public class ActivityController {
                 body.title(), body.description(), body.city(), body.addressLine(),
                 body.latitude(), body.longitude(), body.startsAt(), body.capacity());
         Activity created = commandService.create(cmd, organizerId);
-        log.info("POST /activities → created id={}", created.getId());
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ActivityResponse.from(created, resolveOrganizerName(created)));
+        log.info("POST /activities -> created id={}", created.getId());
+        return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(created));
     }
 
     @PutMapping("/{id}")
@@ -112,7 +124,7 @@ public class ActivityController {
                 body.title(), body.description(), body.city(), body.addressLine(),
                 body.latitude(), body.longitude(), body.startsAt(), body.capacity());
         Activity updated = commandService.update(id, cmd, userId);
-        return ResponseEntity.ok(ActivityResponse.from(updated, resolveOrganizerName(updated)));
+        return ResponseEntity.ok(toResponse(updated));
     }
 
     @DeleteMapping("/{id}")
@@ -121,7 +133,38 @@ public class ActivityController {
     public ResponseEntity<ActivityResponse> cancel(@PathVariable UUID id) {
         UUID userId = currentUserAccessor.requireCurrentUserId();
         Activity cancelled = commandService.cancel(id, userId);
-        return ResponseEntity.ok(ActivityResponse.from(cancelled, resolveOrganizerName(cancelled)));
+        return ResponseEntity.ok(toResponse(cancelled));
+    }
+
+    @PostMapping(value = "/{id}/cover", consumes = "multipart/form-data")
+    @PreAuthorize("hasRole('ORGANIZER')")
+    @Operation(summary = "Upload (or replace) the activity cover image. Max 2 MB, JPEG / PNG / WebP only.")
+    public ResponseEntity<ActivityResponse> uploadCover(@PathVariable UUID id,
+                                                       @RequestParam("file") MultipartFile file) throws IOException {
+        UUID userId = currentUserAccessor.requireCurrentUserId();
+        if (file == null || file.isEmpty()) {
+            throw new InvalidCoverException("file part is missing or empty");
+        }
+        Activity updated = commandService.uploadCover(id, userId,
+                file.getContentType(), file.getSize(), file.getInputStream());
+        return ResponseEntity.ok(toResponse(updated));
+    }
+
+    @DeleteMapping("/{id}/cover")
+    @PreAuthorize("hasRole('ORGANIZER')")
+    @Operation(summary = "Remove the activity cover image (idempotent).")
+    public ResponseEntity<ActivityResponse> deleteCover(@PathVariable UUID id) {
+        UUID userId = currentUserAccessor.requireCurrentUserId();
+        Activity updated = commandService.removeCover(id, userId);
+        return ResponseEntity.ok(toResponse(updated));
+    }
+
+    private ActivityResponse toResponse(Activity activity) {
+        return ActivityResponse.from(activity, resolveOrganizerName(activity), coverUrlOf(activity));
+    }
+
+    private String coverUrlOf(Activity a) {
+        return coverStorage.presignedUrl(a.getCoverKey(), coverProperties.presignedUrlTtl());
     }
 
     private String resolveOrganizerName(Activity activity) {
