@@ -41,6 +41,19 @@ public class ActivityQueryService {
                 .orElseGet(() -> repository.findPublishedUpcoming(now, pageable));
     }
 
+    /**
+     * Activities organized by {@code organizerId}, regardless of status / date.
+     * Powers the organizer dashboard — they need to see their cancelled and past
+     * entries, not just the publicly listed slice. Sorted by {@code startsAt DESC}.
+     */
+    public Page<Activity> listMine(UUID organizerId, Integer page, Integer size) {
+        int safePage = page == null || page < 0 ? 0 : page;
+        int safeSize = size == null || size <= 0 ? properties.defaultPageSize() : size;
+        safeSize = Math.min(safeSize, properties.maxPageSize());
+        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "startsAt"));
+        return repository.findByOrganizerId(organizerId, pageable);
+    }
+
     private Pageable resolvePageable(Integer page, Integer size) {
         int safePage = page == null || page < 0 ? 0 : page;
         int safeSize = size == null || size <= 0 ? properties.defaultPageSize() : size;

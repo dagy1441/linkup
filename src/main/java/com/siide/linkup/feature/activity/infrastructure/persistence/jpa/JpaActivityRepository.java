@@ -36,6 +36,13 @@ public interface JpaActivityRepository extends JpaRepository<Activity, UUID>, Ac
                                                Pageable pageable);
 
     @Override
+    @Query("""
+            SELECT a FROM Activity a
+             WHERE a.organizerId = :organizerId
+            """)
+    Page<Activity> findByOrganizerId(@Param("organizerId") UUID organizerId, Pageable pageable);
+
+    @Override
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             UPDATE Activity a

@@ -75,6 +75,35 @@ class ActivityQueryServiceTest {
     }
 
     @Test
+    void list_mine_delegates_to_repository_with_organizer_id_and_desc_sort() {
+        UUID organizerId = UUID.randomUUID();
+        when(repository.findByOrganizerId(eq(organizerId), any())).thenReturn(new PageImpl<>(List.of()));
+
+        service.listMine(organizerId, null, null);
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(repository).findByOrganizerId(eq(organizerId), captor.capture());
+        assertThat(captor.getValue().getPageSize()).isEqualTo(20);
+        assertThat(captor.getValue().getPageNumber()).isZero();
+        assertThat(captor.getValue().getSort().getOrderFor("startsAt"))
+                .isNotNull()
+                .extracting(o -> o.getDirection().name())
+                .isEqualTo("DESC");
+    }
+
+    @Test
+    void list_mine_caps_page_size() {
+        UUID organizerId = UUID.randomUUID();
+        when(repository.findByOrganizerId(eq(organizerId), any())).thenReturn(new PageImpl<>(List.of()));
+
+        service.listMine(organizerId, 0, 9_999);
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(repository).findByOrganizerId(eq(organizerId), captor.capture());
+        assertThat(captor.getValue().getPageSize()).isEqualTo(100);
+    }
+
+    @Test
     void get_by_id_throws_when_missing() {
         UUID id = UUID.randomUUID();
         when(repository.findById(id)).thenReturn(Optional.empty());
