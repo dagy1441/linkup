@@ -107,7 +107,7 @@ public class ActivityController {
     public ResponseEntity<ActivityResponse> create(@Valid @RequestBody ActivityRequest body) {
         UUID organizerId = currentUserAccessor.requireCurrentUserId();
         CreateActivityCommand cmd = new CreateActivityCommand(
-                body.title(), body.description(), body.city(), body.addressLine(),
+                body.title(), body.description(), body.category(), body.city(), body.addressLine(),
                 body.latitude(), body.longitude(), body.startsAt(), body.capacity());
         Activity created = commandService.create(cmd, organizerId);
         log.info("POST /activities -> created id={}", created.getId());
@@ -121,7 +121,7 @@ public class ActivityController {
                                                    @Valid @RequestBody ActivityRequest body) {
         UUID userId = currentUserAccessor.requireCurrentUserId();
         UpdateActivityCommand cmd = new UpdateActivityCommand(
-                body.title(), body.description(), body.city(), body.addressLine(),
+                body.title(), body.description(), body.category(), body.city(), body.addressLine(),
                 body.latitude(), body.longitude(), body.startsAt(), body.capacity());
         Activity updated = commandService.update(id, cmd, userId);
         return ResponseEntity.ok(toResponse(updated));

@@ -53,7 +53,7 @@ public class ActivityCommandService {
     public Activity create(CreateActivityCommand cmd, UUID organizerId) {
         Location location = Location.of(cmd.city(), cmd.addressLine(), cmd.latitude(), cmd.longitude());
         Activity activity = Activity.create(
-                cmd.title(), cmd.description(), location, cmd.startsAt(), cmd.capacity(),
+                cmd.title(), cmd.description(), cmd.category(), location, cmd.startsAt(), cmd.capacity(),
                 organizerId, Instant.now(clock));
         Activity saved = repository.save(activity);
         eventPublisher.publishEvent(ActivityCreatedEvent.of(
@@ -67,7 +67,7 @@ public class ActivityCommandService {
     public Activity update(UUID activityId, UpdateActivityCommand cmd, UUID currentUserId) {
         Activity activity = loadAndAuthorize(activityId, currentUserId);
         Location location = Location.of(cmd.city(), cmd.addressLine(), cmd.latitude(), cmd.longitude());
-        activity.update(cmd.title(), cmd.description(), location, cmd.startsAt(), cmd.capacity(),
+        activity.update(cmd.title(), cmd.description(), cmd.category(), location, cmd.startsAt(), cmd.capacity(),
                 Instant.now(clock));
         log.info("Activity updated id={} by userId={}", activityId, currentUserId);
         return activity;
