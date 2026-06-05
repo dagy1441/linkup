@@ -1,6 +1,7 @@
 package com.siide.linkup.feature.activity.infrastructure.rest.dto;
 
 import com.siide.linkup.feature.activity.domain.model.Activity;
+import com.siide.linkup.feature.activity.domain.model.ActivityCategory;
 import com.siide.linkup.feature.activity.domain.model.ActivityStatus;
 
 import java.time.Instant;
@@ -14,6 +15,7 @@ public record ActivityResponse(
         UUID id,
         String title,
         String description,
+        ActivityCategory category,
         String city,
         String addressLine,
         Double latitude,
@@ -34,6 +36,7 @@ public record ActivityResponse(
                 a.getId(),
                 a.getTitle(),
                 a.getDescription(),
+                a.getCategory(),
                 a.getLocation().getCity(),
                 a.getLocation().getAddressLine(),
                 a.getLocation().getLatitude(),

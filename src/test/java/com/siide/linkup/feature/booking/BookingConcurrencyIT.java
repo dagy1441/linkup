@@ -2,6 +2,7 @@ package com.siide.linkup.feature.booking;
 
 import com.siide.linkup.feature.activity.domain.ActivityRepository;
 import com.siide.linkup.feature.activity.domain.model.Activity;
+import com.siide.linkup.feature.activity.domain.model.ActivityCategory;
 import com.siide.linkup.feature.activity.domain.model.Location;
 import com.siide.linkup.feature.booking.application.BookingCommandService;
 import com.siide.linkup.feature.booking.application.dto.CreateBookingCommand;
@@ -52,6 +53,7 @@ class BookingConcurrencyIT {
         Instant now = Instant.now();
         Activity activity = Activity.create(
                 "Race", null,
+                ActivityCategory.CULTURE,
                 Location.ofCity("Abidjan"),
                 now.plus(1, ChronoUnit.HOURS),
                 1,

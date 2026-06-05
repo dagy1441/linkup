@@ -26,7 +26,8 @@ import java.util.UUID;
         name = "activities",
         indexes = {
                 @Index(name = "ix_activities_status_starts_at", columnList = "status, starts_at"),
-                @Index(name = "ix_activities_organizer_id", columnList = "organizer_id")
+                @Index(name = "ix_activities_organizer_id", columnList = "organizer_id"),
+                @Index(name = "ix_activities_category_starts_at", columnList = "category, starts_at")
                 // ix_activities_city_lower is a functional index (LOWER(city)) — JPA can't
                 // express it; lives in Flyway V6 only.
         }
@@ -62,6 +63,10 @@ public class Activity extends Auditable {
     @Column(name = "status", nullable = false, length = 20)
     private ActivityStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "category", nullable = false, length = 20)
+    private ActivityCategory category;
+
     /** Object key in the activity-covers bucket (MinIO / S3). Resolved to a URL by the controller. */
     @Column(name = "cover_key", length = 255)
     private String coverKey;
@@ -70,11 +75,12 @@ public class Activity extends Auditable {
         // JPA
     }
 
-    private Activity(UUID id, String title, String description, Location location,
+    private Activity(UUID id, String title, String description, ActivityCategory category, Location location,
                      Instant startsAt, int capacity, UUID organizerId, Instant now) {
         this.id = Objects.requireNonNull(id, "id");
         setTitle(title);
         setDescription(description);
+        this.category = Objects.requireNonNull(category, "category");
         this.location = Objects.requireNonNull(location, "location");
         setStartsAt(startsAt, now);
         setCapacity(capacity, 0);
@@ -83,9 +89,9 @@ public class Activity extends Auditable {
         this.status = ActivityStatus.PUBLISHED;
     }
 
-    public static Activity create(String title, String description, Location location,
+    public static Activity create(String title, String description, ActivityCategory category, Location location,
                                   Instant startsAt, int capacity, UUID organizerId, Instant now) {
-        return new Activity(UUID.randomUUID(), title, description, location,
+        return new Activity(UUID.randomUUID(), title, description, category, location,
                 startsAt, capacity, organizerId, now);
     }
 
@@ -94,11 +100,12 @@ public class Activity extends Auditable {
      * are not editable through this path. {@code now} is supplied by the caller to
      * keep the aggregate clock-independent (testability).
      */
-    public void update(String title, String description, Location location,
+    public void update(String title, String description, ActivityCategory category, Location location,
                        Instant startsAt, int capacity, Instant now) {
         requireNotCancelled();
         setTitle(title);
         setDescription(description);
+        this.category = Objects.requireNonNull(category, "category");
         this.location = Objects.requireNonNull(location, "location");
         setStartsAt(startsAt, now);
         setCapacity(capacity, this.bookedCount);
@@ -214,6 +221,7 @@ public class Activity extends Auditable {
     public int getRemainingSeats() { return capacity - bookedCount; }
     public UUID getOrganizerId() { return organizerId; }
     public ActivityStatus getStatus() { return status; }
+    public ActivityCategory getCategory() { return category; }
 
     @Override
     public boolean equals(Object o) {

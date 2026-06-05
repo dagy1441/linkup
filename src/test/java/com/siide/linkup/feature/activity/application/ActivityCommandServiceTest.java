@@ -9,6 +9,7 @@ import com.siide.linkup.feature.activity.domain.exception.ActivityAccessDeniedEx
 import com.siide.linkup.feature.activity.domain.exception.ActivityNotFoundException;
 import com.siide.linkup.feature.activity.domain.exception.InvalidCoverException;
 import com.siide.linkup.feature.activity.domain.model.Activity;
+import com.siide.linkup.feature.activity.domain.model.ActivityCategory;
 import com.siide.linkup.feature.activity.domain.model.ActivityStatus;
 import com.siide.linkup.feature.activity.domain.model.Location;
 import com.siide.linkup.feature.activity.domain.storage.CoverStorageService;
@@ -65,7 +66,7 @@ class ActivityCommandServiceTest {
     @Test
     void create_persists_and_publishes_event() {
         CreateActivityCommand cmd = new CreateActivityCommand(
-                "Brunch", "desc", "Abidjan", "Riviera", 5.3, -4.0, inOneHour, 10);
+                "Brunch", "desc", ActivityCategory.CULTURE, "Abidjan", "Riviera", 5.3, -4.0, inOneHour, 10);
 
         Activity result = service.create(cmd, organizerId);
 
@@ -80,7 +81,7 @@ class ActivityCommandServiceTest {
         when(repository.findById(existing.getId())).thenReturn(Optional.of(existing));
 
         UpdateActivityCommand cmd = new UpdateActivityCommand(
-                "Brunch v2", "new desc", "Abidjan", null, null, null, inOneHour, 20);
+                "Brunch v2", "new desc", ActivityCategory.GASTRONOMIE, "Abidjan", null, null, null, inOneHour, 20);
         Activity updated = service.update(existing.getId(), cmd, organizerId);
 
         assertThat(updated.getTitle()).isEqualTo("Brunch v2");
@@ -93,7 +94,7 @@ class ActivityCommandServiceTest {
         when(repository.findById(existing.getId())).thenReturn(Optional.of(existing));
 
         UpdateActivityCommand cmd = new UpdateActivityCommand(
-                "x", null, "Abidjan", null, null, null, inOneHour, 10);
+                "x", null, ActivityCategory.CULTURE, "Abidjan", null, null, null, inOneHour, 10);
         assertThatThrownBy(() -> service.update(existing.getId(), cmd, intruderId))
                 .isInstanceOf(ActivityAccessDeniedException.class);
     }
@@ -104,7 +105,7 @@ class ActivityCommandServiceTest {
         when(repository.findById(id)).thenReturn(Optional.empty());
 
         UpdateActivityCommand cmd = new UpdateActivityCommand(
-                "x", null, "Abidjan", null, null, null, inOneHour, 10);
+                "x", null, ActivityCategory.CULTURE, "Abidjan", null, null, null, inOneHour, 10);
         assertThatThrownBy(() -> service.update(id, cmd, organizerId))
                 .isInstanceOf(ActivityNotFoundException.class);
     }
@@ -190,7 +191,7 @@ class ActivityCommandServiceTest {
     }
 
     private Activity baseActivity() {
-        return Activity.create("Brunch", "desc",
+        return Activity.create("Brunch", "desc", ActivityCategory.CULTURE,
                 Location.of("Abidjan", "Riviera", 5.3, -4.0),
                 inOneHour, 10, organizerId, now);
     }
