@@ -655,3 +655,64 @@ Tracked from audit report, not blocking Phase D:
 - `PageResponse` could carry `hasNext`/`hasPrevious`
 - Redundant `@EnableConfigurationProperties(JwtProperties.class)` in `SecurityConfig` (covered by `@ConfigurationPropertiesScan`)
 
+---
+
+## Session snapshot — État au 2026-06-04 (à reprendre demain)
+
+### Backend — main = `70abfa4`
+
+| PR | Périmètre | État |
+|----|-----------|------|
+| #13 | `GET /api/v1/activities/mine` | ✅ mergé |
+| #14 | Upload affiche couverture activité (V9, MinIO bucket dédié) | ✅ mergé |
+
+Tests : 156/156 verts. CI verte.
+
+### Frontend (`linkup-web`) — main = `ff88f2a`
+
+| Phase | Livré |
+|-------|-------|
+| F0 Scaffold | ✅ Angular 21 + Tailwind v4 + DaisyUI v5 |
+| F1 Landing | ✅ Hero + Actors + Features + How + CTA + SSR |
+| F2 Auth + Shell | ✅ Keycloak PKCE + shell role-aware + i18n |
+| F3-A Profile | ✅ |
+| F3-B Activity feed + détail | ✅ |
+| F4 Organizer dashboard | 🏃 **PR #4 ouverte** — KPIs + ApexCharts + create/edit/cover |
+
+### ⚠️ Ajustements à appliquer demain (gros impact sur le data model)
+
+Voir `docs/PRODUCT.md` (mise à jour ce jour) sections 3.1 + 3.4 + EPIC 7 +
+EPIC 8 + Glossaire. Résumé :
+
+1. **`ActivityCategory` enum** (9 valeurs : Culture, Formation, Soirée,
+   Tourisme, Sport, Festival, Science, Gastronomie, Business). Champ
+   obligatoire sur `Activity`. US-100 / US-101.
+2. **`TicketTier` aggregate** : une activity = N forfaits, chacun avec
+   code + label + prix XOF + capacité + sold. Codes seed :
+   `GRAND_PUBLIC`, `ECO`, `VIP`, `VVIP`, `ENFANT`, `ADULTE`. La
+   `Activity.capacity` actuelle devient dérivée (sum tiers.capacity).
+   Migration V10. US-102 / US-103 / US-104.
+3. **`Booking` ligne items** : refonte `seats: int` → `lines: BookingLine[]`
+   avec `{tierCode, qty, unitPriceAtPurchase}`. Snapshot du prix gelé au
+   moment de l'achat. 1 booking = N tickets QR distincts. Migration V11.
+   US-105 / US-106.
+4. **Mobile Flutter** : nouveau repo `linkup-mobile-flutter` pour
+   l'expérience participant. Backend identique, juste un nouveau client.
+   Sprint S6 (post S3.5 + S4). EPIC 8 entier dans PRODUCT.md.
+
+### Ordre d'exécution recommandé (cf. réponse à l'utilisateur)
+
+| Sprint | Périmètre | Pourquoi cet ordre |
+|--------|-----------|--------------------|
+| S3.5-A | Categories backend + frontend (US-100/101) | Petit refactor, valeur immédiate (filtres feed), risque faible |
+| S3.5-B | Ticket tiers backend (US-102/103/104) + payment-ready DTOs | Avant l'intégration paiement S4 — sinon migration data dangereuse |
+| S3.5-C | Multi-tier booking backend (US-105/106) | Conséquence directe des tiers |
+| S3.5-D | Organizer web : éditeur de forfaits + ventes par forfait (US-107) | Permet de créer du contenu testable |
+| S4 | Paiement Mobile Money | Débloqué dès que ticket tiers ship |
+| S6 | App Flutter participants | Quand backend complet, en parallèle web admin |
+
+**Décision pendante à clarifier demain** : faut-il **arrêter F3-C
+booking sur Angular** (puisque l'expérience participant bascule en
+Flutter) et investir cet effort dans le scaffold Flutter ? Mon avis :
+oui, sauter F3-C Angular. Mais à valider avec l'utilisateur.
+
