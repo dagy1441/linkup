@@ -6,6 +6,7 @@ import com.siide.linkup.feature.activity.application.ActivityCommandService;
 import com.siide.linkup.feature.activity.application.ActivityCoverProperties;
 import com.siide.linkup.feature.activity.application.ActivityQueryService;
 import com.siide.linkup.feature.activity.domain.model.Activity;
+import com.siide.linkup.feature.activity.domain.model.ActivityCategory;
 import com.siide.linkup.feature.activity.domain.model.Location;
 import com.siide.linkup.feature.activity.domain.storage.CoverStorageService;
 import com.siide.linkup.feature.activity.infrastructure.rest.dto.ActivityRequest;
@@ -136,7 +137,7 @@ class ActivityControllerTest {
         when(userDirectory.findDisplayName(created.getOrganizerId())).thenReturn(Optional.of("Alice"));
 
         ActivityRequest body = new ActivityRequest(
-                "Brunch", "desc", "Abidjan", null, null, null,
+                "Brunch", "desc", ActivityCategory.CULTURE, "Abidjan", null, null, null,
                 Instant.now().plus(1, ChronoUnit.HOURS), 10);
 
         mockMvc.perform(post("/api/v1/activities")
@@ -150,7 +151,7 @@ class ActivityControllerTest {
     @Test
     void create_returns_400_on_validation_failure() throws Exception {
         ActivityRequest invalid = new ActivityRequest(
-                " ", null, "Abidjan", null, null, null,
+                " ", null, ActivityCategory.CULTURE, "Abidjan", null, null, null,
                 Instant.now().plus(1, ChronoUnit.HOURS), 10);
 
         mockMvc.perform(post("/api/v1/activities")
@@ -168,7 +169,7 @@ class ActivityControllerTest {
         when(userDirectory.findDisplayName(a.getOrganizerId())).thenReturn(Optional.of("Alice"));
 
         ActivityRequest body = new ActivityRequest(
-                "Updated", "new", "Abidjan", null, null, null,
+                "Updated", "new", ActivityCategory.CULTURE, "Abidjan", null, null, null,
                 Instant.now().plus(2, ChronoUnit.HOURS), 15);
 
         mockMvc.perform(put("/api/v1/activities/{id}", a.getId())
@@ -194,7 +195,7 @@ class ActivityControllerTest {
 
     private Activity sampleActivity() {
         Instant now = Instant.now();
-        return Activity.create("Brunch", "Sunday brunch",
+        return Activity.create("Brunch", "Sunday brunch", ActivityCategory.CULTURE,
                 Location.of("Abidjan", "Riviera", 5.3, -4.0),
                 now.plus(1, ChronoUnit.HOURS),
                 10, UUID.randomUUID(), now);

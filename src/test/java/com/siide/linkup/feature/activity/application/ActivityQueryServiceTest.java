@@ -3,6 +3,7 @@ package com.siide.linkup.feature.activity.application;
 import com.siide.linkup.feature.activity.domain.ActivityRepository;
 import com.siide.linkup.feature.activity.domain.exception.ActivityNotFoundException;
 import com.siide.linkup.feature.activity.domain.model.Activity;
+import com.siide.linkup.feature.activity.domain.model.ActivityCategory;
 import com.siide.linkup.feature.activity.domain.model.Location;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -114,7 +115,7 @@ class ActivityQueryServiceTest {
 
     private Activity sampleActivity() {
         Instant now = Instant.parse("2026-01-01T10:00:00Z");
-        return Activity.create("Brunch", "d",
+        return Activity.create("Brunch", "d", ActivityCategory.CULTURE,
                 Location.of("Abidjan", null, null, null),
                 now.plus(1, ChronoUnit.HOURS),
                 10, UUID.randomUUID(), now);

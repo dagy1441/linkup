@@ -30,7 +30,7 @@ class ActivityTest {
 
     @Test
     void create_rejects_past_start_date() {
-        assertThatThrownBy(() -> Activity.create("T", null, Location.ofCity("Abidjan"),
+        assertThatThrownBy(() -> Activity.create("T", null, ActivityCategory.CULTURE, Location.ofCity("Abidjan"),
                 now.minus(1, ChronoUnit.MINUTES), 5, organizerId, now))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("startsAt");
@@ -38,7 +38,7 @@ class ActivityTest {
 
     @Test
     void create_rejects_non_positive_capacity() {
-        assertThatThrownBy(() -> Activity.create("T", null, Location.ofCity("Abidjan"),
+        assertThatThrownBy(() -> Activity.create("T", null, ActivityCategory.CULTURE, Location.ofCity("Abidjan"),
                 inOneHour, 0, organizerId, now))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("capacity");
@@ -46,7 +46,7 @@ class ActivityTest {
 
     @Test
     void create_rejects_blank_title() {
-        assertThatThrownBy(() -> Activity.create(" ", null, Location.ofCity("Abidjan"),
+        assertThatThrownBy(() -> Activity.create(" ", null, ActivityCategory.CULTURE, Location.ofCity("Abidjan"),
                 inOneHour, 5, organizerId, now))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("title");
@@ -116,7 +116,7 @@ class ActivityTest {
         a.reserveSeats(1, now);
         a.reserveSeats(1, now);
 
-        assertThatThrownBy(() -> a.update("New", null, Location.ofCity("Abidjan"),
+        assertThatThrownBy(() -> a.update("New", null, ActivityCategory.CULTURE, Location.ofCity("Abidjan"),
                 inOneHour, 1, now))
                 .isInstanceOf(ActivityInvalidStateException.class)
                 .hasMessageContaining("booked");
@@ -126,7 +126,7 @@ class ActivityTest {
     void update_rejected_on_cancelled_activity() {
         Activity a = newActivity(5);
         a.cancel();
-        assertThatThrownBy(() -> a.update("New", null, Location.ofCity("Abidjan"),
+        assertThatThrownBy(() -> a.update("New", null, ActivityCategory.CULTURE, Location.ofCity("Abidjan"),
                 inOneHour, 3, now))
                 .isInstanceOf(ActivityInvalidStateException.class);
     }
@@ -136,10 +136,33 @@ class ActivityTest {
         Activity a = newActivity(5);
         Instant later = now.plus(2, ChronoUnit.HOURS);
         // Past relative to "later" should be rejected
-        assertThatThrownBy(() -> a.update("New", null, Location.ofCity("Abidjan"),
+        assertThatThrownBy(() -> a.update("New", null, ActivityCategory.CULTURE, Location.ofCity("Abidjan"),
                 inOneHour, 5, later))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("startsAt");
+    }
+
+    @Test
+    void create_persists_provided_category() {
+        Activity a = Activity.create("Yoga", null, ActivityCategory.SPORT,
+                Location.ofCity("Abidjan"), inOneHour, 5, organizerId, now);
+        assertThat(a.getCategory()).isEqualTo(ActivityCategory.SPORT);
+    }
+
+    @Test
+    void create_rejects_null_category() {
+        assertThatThrownBy(() -> Activity.create("T", null, null,
+                Location.ofCity("Abidjan"), inOneHour, 5, organizerId, now))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessageContaining("category");
+    }
+
+    @Test
+    void update_changes_category() {
+        Activity a = newActivity(5);
+        a.update("New", null, ActivityCategory.FORMATION, Location.ofCity("Abidjan"),
+                inOneHour, 5, now);
+        assertThat(a.getCategory()).isEqualTo(ActivityCategory.FORMATION);
     }
 
     @Test
@@ -150,7 +173,7 @@ class ActivityTest {
     }
 
     private Activity newActivity(int capacity) {
-        return Activity.create("Brunch", "Sunday brunch",
+        return Activity.create("Brunch", "Sunday brunch", ActivityCategory.CULTURE,
                 Location.of("Abidjan", "Riviera 2", 5.3, -4.0),
                 inOneHour, capacity, organizerId, now);
     }
